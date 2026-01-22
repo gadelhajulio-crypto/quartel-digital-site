@@ -2,44 +2,49 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 export interface MedalStatus {
-    id: string; // or name as key
-    nome: string;
-    status: 'concedida' | 'elegível' | 'não elegível' | 'bloqueada'; // mapped to 'não elegível' from view
-    criterio_faltante: string | null;
-    descricao?: string; // Optional if view has it
-    image_url?: string; // Optional
+    medal_id: string;
+    name: string;
+    description: string;
+    level: 'none' | 'bronze' | 'silver' | 'gold';
+    achieved: boolean;
 }
 
-export function useMedals(userId: string) {
+export function useMedals() {
     const [medals, setMedals] = useState<MedalStatus[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!userId) {
-            setLoading(false);
-            return;
-        }
+        let active = true;
 
-        async function fetchMedals() {
-            try {
-                const { data, error } = await supabase
-                    .from('v_medalha_elegibilidade_status')
-                    .select('*');
+        async function loadMedals() {
+            setLoading(true);
 
-                if (error) {
-                    console.error('Error fetching medals:', error);
-                } else {
-                    setMedals(data || []);
-                }
-            } catch (err) {
-                console.error('Unexpected error fetching medals:', err);
-            } finally {
-                setLoading(false);
+            const { data, error } = await supabase
+                .from('v_medals_status')
+                .select('*')
+                .order('name');
+
+            if (!active) return;
+
+            if (error) {
+                console.error('[MEDALS] Erro ao carregar medalhas:', error);
+                setMedals([]);
+            } else {
+                setMedals(data ?? []);
             }
+
+            setLoading(false);
         }
 
-        fetchMedals();
-    }, [userId]);
+        loadMedals();
 
-    return { medals, loading };
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    return {
+        medals,
+        loading,
+    };
 }

@@ -1,79 +1,105 @@
-import React from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { View, Text, StyleSheet, FlatList } from 'react-native';
 import { useAuth } from '../../../src/context/AuthContext';
-import { supabase } from '../../../src/lib/supabase';
+import { useForceTheme } from '../../../src/context/ForceThemeContext';
+import { HierarchyBadge } from '../../../src/components/HierarchyBadge';
+import { useMedals } from '../../../src/hooks/useMedals';
 
-// Mapeamento Seguro (Cópia da lógica do Chat)
-const INSTRUCTOR_ASSETS = {
-    objetivo: {
-        name: 'Instrutor Rocha',
-        avatar: require('../../../assets/instructors/marinha/objetivo/instrutor-objetivo-marinha-avatar.png'),
-    },
-    estrategico: {
-        name: 'Instrutor Azevedo',
-        avatar: require('../../../assets/instructors/marinha/estrategico/instrutor-estrategico-marinha-avatar.png'),
-    },
-    didatico: {
-        // Pasta 'didatica', arquivo 'instrutor'
-        name: 'Instrutora Helena',
-        avatar: require('../../../assets/instructors/marinha/didatica/instrutor-didatica-marinha-avatar.png'),
-    },
-};
+export default function PerfilScreen() {
+    const { profile } = useAuth();
+    const { theme } = useForceTheme();
+    const { medals } = useMedals();
 
-export default function ProfileScreen() {
-    const { user, profile, signOut } = useAuth();
-    const router = useRouter();
+    if (!profile) {
+        return (
+            <View style={[styles.container, { backgroundColor: theme.background }]}>
+                <Text style={{ color: theme.text }}>Carregando perfil…</Text>
+            </View>
+        );
+    }
 
-    const currentInstructorId = profile?.instructor_profile_id || 'objetivo';
-    const instructorData = INSTRUCTOR_ASSETS[currentInstructorId as keyof typeof INSTRUCTOR_ASSETS] || INSTRUCTOR_ASSETS.objetivo;
-
-    const handleLogout = async () => {
-        await signOut();
-    };
+    const conqueredMedals = medals.filter((m) => m.achieved);
 
     return (
-        <View style={styles.container}>
-            <SafeAreaView style={styles.content}>
-                <Text style={styles.title}>Perfil do Recruta</Text>
-                <Text style={styles.email}>{user?.email}</Text>
+        <View style={[styles.container, { backgroundColor: theme.background }]}>
+            {/* Header institucional */}
+            <Text style={[styles.header, { color: theme.primary }]}>
+                Perfil do Recruta
+            </Text>
 
-                <View style={styles.instructorCard}>
-                    <Text style={styles.label}>Instrutor Atual</Text>
-                    <View style={styles.instructorRow}>
-                        <Image source={instructorData.avatar} style={styles.avatar} />
-                        <Text style={styles.instructorName}>{instructorData.name}</Text>
-                    </View>
+            {/* Identificação */}
+            <View style={styles.section}>
+                <Text style={[styles.name, { color: theme.text }]}>
+                    {profile.nome}
+                </Text>
 
-                    <TouchableOpacity
-                        style={styles.changeButton}
-                        onPress={() => router.push('/(onboarding)/instructor-select?mode=change')}
-                    >
-                        <Text style={styles.changeButtonText}>Trocar Instrutor</Text>
-                    </TouchableOpacity>
-                </View>
+                <Text style={[styles.force, { color: theme.muted }]}>
+                    Força: {profile.forca.toUpperCase()}
+                </Text>
+            </View>
 
-                <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-                    <Text style={styles.logoutText}>Sair do Quartel</Text>
-                </TouchableOpacity>
-            </SafeAreaView>
+            {/* Hierarquia */}
+            <View style={styles.section}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                    Hierarquia Atual
+                </Text>
+
+                <HierarchyBadge nivelAtual={profile.nivel_atual} />
+            </View>
+
+            {/* Medalhas conquistadas */}
+            <View style={styles.section}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                    Medalhas Conquistadas
+                </Text>
+
+                {conqueredMedals.length === 0 ? (
+                    <Text style={{ color: theme.muted }}>
+                        Nenhuma medalha conquistada até o momento.
+                    </Text>
+                ) : (
+                    <FlatList
+                        data={conqueredMedals}
+                        keyExtractor={(item) => item.medal_id}
+                        renderItem={({ item }) => (
+                            <Text style={[styles.medalItem, { color: theme.text }]}>
+                                • {item.name}
+                            </Text>
+                        )}
+                    />
+                )}
+            </View>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0F172A' },
-    content: { padding: 24 },
-    title: { color: '#F8FAFC', fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
-    email: { color: '#94A3B8', fontSize: 16, marginBottom: 32 },
-    instructorCard: { backgroundColor: '#1E293B', padding: 20, borderRadius: 16, marginBottom: 24, borderWidth: 1, borderColor: '#334155' },
-    label: { color: '#64748B', fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 12 },
-    instructorRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-    avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 16, backgroundColor: '#334155' },
-    instructorName: { color: '#F8FAFC', fontSize: 18, fontWeight: 'bold' },
-    changeButton: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#38BDF8', padding: 12, borderRadius: 8, alignItems: 'center' },
-    changeButtonText: { color: '#38BDF8', fontWeight: 'bold' },
-    logoutButton: { padding: 16, alignItems: 'center' },
-    logoutText: { color: '#EF4444', fontWeight: 'bold' },
+    container: {
+        flex: 1,
+        padding: 16,
+    },
+    header: {
+        fontSize: 20,
+        fontWeight: '600',
+        marginBottom: 20,
+    },
+    section: {
+        marginBottom: 24,
+    },
+    name: {
+        fontSize: 18,
+        fontWeight: '600',
+        marginBottom: 4,
+    },
+    force: {
+        fontSize: 14,
+    },
+    sectionTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 8,
+    },
+    medalItem: {
+        fontSize: 14,
+        marginBottom: 4,
+    },
 });
