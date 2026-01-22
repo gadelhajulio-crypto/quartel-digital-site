@@ -1,13 +1,16 @@
-import { View, Text, StyleSheet, FlatList } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useForceTheme } from '../../../src/context/ForceThemeContext';
 import { HierarchyBadge } from '../../../src/components/HierarchyBadge';
 import { useMedals } from '../../../src/hooks/useMedals';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function PerfilScreen() {
     const { profile } = useAuth();
     const { theme } = useForceTheme();
     const { medals } = useMedals();
+    const router = useRouter();
 
     if (!profile) {
         return (
@@ -68,6 +71,18 @@ export default function PerfilScreen() {
                     />
                 )}
             </View>
+
+            {/* Histórico e Ações */}
+            <TouchableOpacity
+                style={[styles.historyButton, { borderColor: theme.border }]}
+                onPress={() => router.push('/historico')}
+            >
+                <Ionicons name="time-outline" size={20} color={theme.text} />
+                <Text style={[styles.historyText, { color: theme.text }]}>
+                    Histórico de Atividades
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={theme.muted} />
+            </TouchableOpacity>
         </View>
     );
 }
@@ -101,5 +116,19 @@ const styles = StyleSheet.create({
     medalItem: {
         fontSize: 14,
         marginBottom: 4,
+    },
+    historyButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        borderWidth: 1,
+        borderRadius: 8,
+        marginTop: 8,
+    },
+    historyText: {
+        flex: 1,
+        fontSize: 15,
+        marginLeft: 12,
+        fontWeight: '500',
     },
 });
