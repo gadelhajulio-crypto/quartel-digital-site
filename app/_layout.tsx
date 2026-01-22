@@ -1,21 +1,13 @@
-import { Slot, useRouter } from 'expo-router';
-import { useEffect } from 'react';
-import { useAuth } from '../src/context/AuthContext';
-import { InstitutionalLoading } from '../src/components/InstitutionalLoading';
+import { Slot } from 'expo-router';
+import { AuthProvider } from '../src/context/AuthContext';
+import { ForceThemeProvider } from '../src/context/ForceThemeContext';
 
 export default function RootLayout() {
-  const { loading, session } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!loading && !session) {
-      router.replace('/auth');
-    }
-  }, [loading, session]);
-
-  if (loading) {
-    return <InstitutionalLoading />;
-  }
-
-  return <Slot />;
+  return (
+    <AuthProvider>
+      <ForceThemeProvider>
+        <Slot />
+      </ForceThemeProvider>
+    </AuthProvider>
+  );
 }

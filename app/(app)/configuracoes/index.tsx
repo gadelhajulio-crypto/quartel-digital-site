@@ -1,47 +1,22 @@
 import { View, Text, StyleSheet, Switch, TouchableOpacity } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useForceTheme } from '../../../src/context/ForceThemeContext';
-import { InstitutionalLoading } from '../../../src/components/InstitutionalLoading';
-
-const STORAGE_KEYS = {
-    sound: 'settings_sound_enabled',
-    vibration: 'settings_vibration_enabled',
-};
 
 export default function ConfiguracoesScreen() {
     const { theme } = useForceTheme();
     const router = useRouter();
 
-    const [loading, setLoading] = useState(true);
     const [soundEnabled, setSoundEnabled] = useState(true);
     const [vibrationEnabled, setVibrationEnabled] = useState(true);
 
-    useEffect(() => {
-        (async () => {
-            const sound = await AsyncStorage.getItem(STORAGE_KEYS.sound);
-            const vibration = await AsyncStorage.getItem(STORAGE_KEYS.vibration);
-
-            if (sound !== null) setSoundEnabled(sound === 'true');
-            if (vibration !== null) setVibrationEnabled(vibration === 'true');
-            setLoading(false);
-        })();
-    }, []);
-
-    const toggleSound = async (value: boolean) => {
+    const toggleSound = (value: boolean) => {
         setSoundEnabled(value);
-        await AsyncStorage.setItem(STORAGE_KEYS.sound, String(value));
     };
 
-    const toggleVibration = async (value: boolean) => {
+    const toggleVibration = (value: boolean) => {
         setVibrationEnabled(value);
-        await AsyncStorage.setItem(STORAGE_KEYS.vibration, String(value));
     };
-
-    if (loading) {
-        return <InstitutionalLoading />;
-    }
 
     return (
         <View style={[styles.container, { backgroundColor: theme.background }]}>

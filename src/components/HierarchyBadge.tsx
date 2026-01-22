@@ -20,22 +20,22 @@ function getHierarchyData(nivel: number) {
         case 2:
             return {
                 label: 'Soldado',
-                icon: require('../assets/hierarchy/soldado.png'),
+                icon: require('../assets/hierarchy/aspirante.png'),
             };
         case 3:
             return {
                 label: 'Cabo',
-                icon: require('../assets/hierarchy/cabo.png'),
+                icon: require('../assets/hierarchy/combatente.png'),
             };
         case 4:
             return {
                 label: 'Sargento',
-                icon: require('../assets/hierarchy/sargento.png'),
+                icon: require('../assets/hierarchy/veterano.png'),
             };
         default:
             return {
                 label: 'Hierarquia não definida',
-                icon: require('../assets/hierarchy/default.png'),
+                icon: require('../assets/hierarchy/recruta.png'),
             };
     }
 }

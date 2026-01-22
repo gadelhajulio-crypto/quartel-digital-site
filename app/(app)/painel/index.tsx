@@ -15,7 +15,7 @@ const logoImg = require('../../../assets/logorecrutapadrao.png');
 
 export default function PainelScreen() {
     const router = useRouter();
-    const { theme, userForce } = useTheme();
+    const { theme, force } = useForceTheme();
     const [loading, setLoading] = useState(true);
     const [xp, setXp] = useState(1250);
     const targetXp = 2000;
@@ -35,7 +35,7 @@ export default function PainelScreen() {
 
     // Grid Card Component
     const GridCard = ({ title, icon, onPress, value, badge }: { title: string, icon: string, onPress: () => void, value?: string, badge?: string }) => (
-        <TouchableOpacity style={[styles.gridCard, { backgroundColor: theme.surface, borderRadius: 12 }]} onPress={onPress}>
+        <TouchableOpacity style={[styles.gridCard, { backgroundColor: theme.card, borderRadius: 12 }]} onPress={onPress}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={styles.cardIcon}>{icon}</Text>
                 {badge && (
@@ -45,7 +45,7 @@ export default function PainelScreen() {
                 )}
             </View>
             <View>
-                {value && <Text style={[styles.cardValue, { color: theme.text }]}>{value}</Text>}
+                {value && <Text style={[styles.cardValue, { color: theme.textPrimary }]}>{value}</Text>}
                 <Text style={[styles.cardTitle, { color: theme.secondary }]}>{title}</Text>
             </View>
         </TouchableOpacity>
@@ -56,17 +56,17 @@ export default function PainelScreen() {
             {/* Header Fixo */}
             <View style={[styles.header, { backgroundColor: theme.background, borderBottomColor: 'rgba(255,255,255,0.05)' }]}>
                 <Image source={logoImg} style={styles.headerLogo} resizeMode="contain" />
-                <Text style={[styles.headerTitle, { color: theme.text }]}>PAINEL DO RECRUTA</Text>
+                <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>PAINEL DO RECRUTA</Text>
             </View>
 
             <ScrollView contentContainerStyle={styles.content}>
 
                 {/* Main Card */}
-                <View style={[styles.mainCard, { backgroundColor: theme.surface, borderRadius: 12 }]}>
+                <View style={[styles.mainCard, { backgroundColor: theme.card, borderRadius: 12 }]}>
                     <View style={styles.cardHeader}>
                         <Text style={styles.helmetIcon}>🪖</Text>
                         <View style={{ flex: 1 }}>
-                            <Text style={[styles.rankTitle, { color: theme.text }]}>TROPA BASE</Text>
+                            <Text style={[styles.rankTitle, { color: theme.textPrimary }]}>TROPA BASE</Text>
                             <Text style={[styles.xpText, { color: '#AAA' }]}>{xp} / {targetXp} XP</Text>
                         </View>
                     </View>
@@ -109,7 +109,7 @@ export default function PainelScreen() {
 
                 {/* Instructor Access Card - NEW */}
                 <TouchableOpacity
-                    style={[styles.instructorCard, { backgroundColor: theme.surface, borderColor: theme.secondary }]}
+                    style={[styles.instructorCard, { backgroundColor: theme.card, borderColor: theme.secondary }]}
                     onPress={() => router.push('/(protected)/chat')}
                 >
                     <View style={styles.instructorIconContainer}>
@@ -118,7 +118,7 @@ export default function PainelScreen() {
                     <View style={styles.instructorTextContainer}>
                         <Text style={[styles.instructorTitle, { color: theme.secondary }]}>FALAR COM INSTRUTOR</Text>
                         <Text style={[styles.instructorSubtitle, { color: '#AAA' }]}>
-                            Canal Seguro &bull; {theme.forces?.navy ? 'Naval' : 'Militar'}
+                            Canal Seguro &bull; {force === 'marinha' ? 'Naval' : 'Militar'}
                         </Text>
                     </View>
                     <Text style={{ fontSize: 20, color: theme.secondary }}>›</Text>
