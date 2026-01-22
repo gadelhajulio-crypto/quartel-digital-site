@@ -1,26 +1,17 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useForceTheme } from '../../../src/context/ForceThemeContext';
 import { HierarchyBadge } from '../../../src/components/HierarchyBadge';
-import { useMedals } from '../../../src/hooks/useMedals';
-import { Ionicons } from '@expo/vector-icons';
 
 export default function PerfilScreen() {
-    const { profile } = useAuth();
     const { theme } = useForceTheme();
-    const { medals } = useMedals();
+    const { profile } = useAuth();
     const router = useRouter();
 
     if (!profile) {
-        return (
-            <View style={[styles.container, { backgroundColor: theme.background }]}>
-                <Text style={{ color: theme.text }}>Carregando perfil…</Text>
-            </View>
-        );
+        return null;
     }
-
-    const conqueredMedals = medals.filter((m) => m.achieved);
 
     return (
         <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -31,57 +22,61 @@ export default function PerfilScreen() {
 
             {/* Identificação */}
             <View style={styles.section}>
-                <Text style={[styles.name, { color: theme.text }]}>
+                <Text style={[styles.label, { color: theme.muted }]}>Nome</Text>
+                <Text style={[styles.value, { color: theme.text }]}>
                     {profile.nome}
                 </Text>
+            </View>
 
-                <Text style={[styles.force, { color: theme.muted }]}>
-                    Força: {profile.forca.toUpperCase()}
+            <View style={styles.section}>
+                <Text style={[styles.label, { color: theme.muted }]}>Força</Text>
+                <Text style={[styles.value, { color: theme.text }]}>
+                    {profile.forca.toUpperCase()}
                 </Text>
             </View>
 
             {/* Hierarquia */}
             <View style={styles.section}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                <Text style={[styles.label, { color: theme.muted }]}>
                     Hierarquia Atual
                 </Text>
-
                 <HierarchyBadge nivelAtual={profile.nivel_atual} />
             </View>
 
-            {/* Medalhas conquistadas */}
+            {/* Medalhas (resumo institucional) */}
             <View style={styles.section}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                    Medalhas Conquistadas
+                <Text style={[styles.label, { color: theme.muted }]}>
+                    Condecorações
                 </Text>
-
-                {conqueredMedals.length === 0 ? (
-                    <Text style={{ color: theme.muted }}>
-                        Nenhuma medalha conquistada até o momento.
-                    </Text>
-                ) : (
-                    <FlatList
-                        data={conqueredMedals}
-                        keyExtractor={(item) => item.medal_id}
-                        renderItem={({ item }) => (
-                            <Text style={[styles.medalItem, { color: theme.text }]}>
-                                • {item.name}
-                            </Text>
-                        )}
-                    />
-                )}
+                <Text style={[styles.value, { color: theme.text }]}>
+                    Medalhas conquistadas disponíveis na seção dedicada
+                </Text>
             </View>
 
-            {/* Histórico e Ações */}
+            {/* 🔗 ACESSO AO HISTÓRICO */}
             <TouchableOpacity
-                style={[styles.historyButton, { borderColor: theme.border }]}
                 onPress={() => router.push('/historico')}
+                style={[
+                    styles.linkRow,
+                    { borderColor: theme.border },
+                ]}
             >
-                <Ionicons name="time-outline" size={20} color={theme.text} />
-                <Text style={[styles.historyText, { color: theme.text }]}>
-                    Histórico de Atividades
+                <Text style={[styles.linkText, { color: theme.primary }]}>
+                    Ver histórico completo
                 </Text>
-                <Ionicons name="chevron-forward" size={16} color={theme.muted} />
+            </TouchableOpacity>
+
+            {/* 🔗 ACESSO ÀS CONFIGURAÇÕES */}
+            <TouchableOpacity
+                onPress={() => router.push('/configuracoes')}
+                style={[
+                    styles.linkRow,
+                    { borderColor: theme.border },
+                ]}
+            >
+                <Text style={[styles.linkText, { color: theme.primary }]}>
+                    Configurações
+                </Text>
             </TouchableOpacity>
         </View>
     );
@@ -95,40 +90,27 @@ const styles = StyleSheet.create({
     header: {
         fontSize: 20,
         fontWeight: '600',
-        marginBottom: 20,
-    },
-    section: {
         marginBottom: 24,
     },
-    name: {
-        fontSize: 18,
-        fontWeight: '600',
+    section: {
+        marginBottom: 18,
+    },
+    label: {
+        fontSize: 13,
         marginBottom: 4,
     },
-    force: {
-        fontSize: 14,
-    },
-    sectionTitle: {
+    value: {
         fontSize: 16,
-        fontWeight: '600',
-        marginBottom: 8,
+        fontWeight: '500',
     },
-    medalItem: {
-        fontSize: 14,
-        marginBottom: 4,
-    },
-    historyButton: {
-        flexDirection: 'row',
+    linkRow: {
+        marginTop: 16,
+        paddingVertical: 14,
         alignItems: 'center',
-        padding: 16,
-        borderWidth: 1,
-        borderRadius: 8,
-        marginTop: 8,
+        borderTopWidth: 1,
     },
-    historyText: {
-        flex: 1,
-        fontSize: 15,
-        marginLeft: 12,
+    linkText: {
+        fontSize: 14,
         fontWeight: '500',
     },
 });
