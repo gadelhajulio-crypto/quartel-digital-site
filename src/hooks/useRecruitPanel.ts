@@ -1,3 +1,4 @@
+```javascript
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { startOfMonth, format } from 'date-fns';
@@ -8,6 +9,7 @@ export function useRecruitPanel(userId: string, userForce: string) {
     const [completed, setCompleted] = useState(0);
     const [isChampion, setIsChampion] = useState(false);
     const [pendingReviews, setPendingReviews] = useState(0);
+    const [unreadNoticesCount, setUnreadNoticesCount] = useState(0);
     const [loading, setLoading] = useState(true);
 
     const [nextLesson, setNextLesson] = useState<{ id: string; title: string; module: string; order: number } | null>(null);
@@ -28,7 +30,8 @@ export function useRecruitPanel(userId: string, userForce: string) {
                     rankRes,
                     champRes,
                     completedRes,
-                    nextLessonRes
+                    nextLessonRes,
+                    noticesRes
                 ] = await Promise.all([
                     // 1. XP
                     supabase.from('mv_xp_mensal_recruta')
@@ -47,7 +50,11 @@ export function useRecruitPanel(userId: string, userForce: string) {
                         .select('completed_count')
                         .eq('user_id', userId).maybeSingle(),
                     // 5. Canonical Next Lesson (Server Side)
-                    supabase.rpc('get_student_next_lesson', { p_user_id: userId }).maybeSingle()
+                    supabase.rpc('get_student_next_lesson', { p_user_id: userId }).maybeSingle(),
+                    // 6. Unread Notices Count
+                    supabase.from('v_institutional_notices')
+                        .select('notice_id', { count: 'exact', head: true })
+                        .eq('is_read', false)
                 ]);
 
                 // Set Indicators
@@ -56,6 +63,7 @@ export function useRecruitPanel(userId: string, userForce: string) {
                 setIsChampion(champRes.data?.user_id === userId);
                 setCompleted(completedRes.data?.completed_count || 0);
                 setPendingReviews(0);
+                setUnreadNoticesCount(noticesRes.count || 0);
 
                 // Set Next Lesson from RPC
                 if (nextLessonRes.data) {
@@ -89,5 +97,6 @@ export function useRecruitPanel(userId: string, userForce: string) {
         loadIndicators();
     }, [userId, userForce]);
 
-    return { xp, ranking, completed, isChampion, pendingReviews, nextLesson, loading };
+    return { xp, ranking, completed, isChampion, pendingReviews, nextLesson, unreadNoticesCount, loading };
 }
+```
