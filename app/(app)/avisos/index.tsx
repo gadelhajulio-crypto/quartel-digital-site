@@ -3,6 +3,8 @@ import { useRouter } from 'expo-router';
 import { useForceTheme } from '../../../src/context/ForceThemeContext';
 import { useInstitutionalNotices } from '../../../src/hooks/useInstitutionalNotices';
 import { NoticeCard } from '../../../src/components/cards/NoticeCard';
+import { InstitutionalLoading } from '../../../src/components/InstitutionalLoading';
+import { InstitutionalEmpty } from '../../../src/components/InstitutionalEmpty';
 
 export default function AvisosScreen() {
     const { theme } = useForceTheme();
@@ -10,9 +12,16 @@ export default function AvisosScreen() {
     const { notices, loading, markAsRead } = useInstitutionalNotices();
 
     if (loading) {
+        return <InstitutionalLoading />;
+    }
+
+    if (!notices || notices.length === 0) {
         return (
             <View style={[styles.container, { backgroundColor: theme.background }]}>
-                <Text style={{ color: theme.text }}>Carregando avisos…</Text>
+                <Text style={[styles.header, { color: theme.primary }]}>
+                    Avisos Institucionais
+                </Text>
+                <InstitutionalEmpty text="Nenhum aviso institucional no momento." />
             </View>
         );
     }

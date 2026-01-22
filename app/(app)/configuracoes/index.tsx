@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useForceTheme } from '../../../src/context/ForceThemeContext';
+import { InstitutionalLoading } from '../../../src/components/InstitutionalLoading';
 
 const STORAGE_KEYS = {
     sound: 'settings_sound_enabled',
@@ -13,6 +14,7 @@ export default function ConfiguracoesScreen() {
     const { theme } = useForceTheme();
     const router = useRouter();
 
+    const [loading, setLoading] = useState(true);
     const [soundEnabled, setSoundEnabled] = useState(true);
     const [vibrationEnabled, setVibrationEnabled] = useState(true);
 
@@ -23,6 +25,7 @@ export default function ConfiguracoesScreen() {
 
             if (sound !== null) setSoundEnabled(sound === 'true');
             if (vibration !== null) setVibrationEnabled(vibration === 'true');
+            setLoading(false);
         })();
     }, []);
 
@@ -35,6 +38,10 @@ export default function ConfiguracoesScreen() {
         setVibrationEnabled(value);
         await AsyncStorage.setItem(STORAGE_KEYS.vibration, String(value));
     };
+
+    if (loading) {
+        return <InstitutionalLoading />;
+    }
 
     return (
         <View style={[styles.container, { backgroundColor: theme.background }]}>

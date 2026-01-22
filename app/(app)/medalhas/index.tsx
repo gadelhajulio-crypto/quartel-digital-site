@@ -2,15 +2,24 @@ import { View, Text, FlatList, StyleSheet } from 'react-native';
 import { useForceTheme } from '../../../src/context/ForceThemeContext';
 import { useMedals } from '../../../src/hooks/useMedals';
 import { MedalCard } from '../../../src/components/cards/MedalCard';
+import { InstitutionalLoading } from '../../../src/components/InstitutionalLoading';
+import { InstitutionalEmpty } from '../../../src/components/InstitutionalEmpty';
 
 export default function MedalhasScreen() {
     const { theme } = useForceTheme();
     const { medals, loading } = useMedals();
 
     if (loading) {
+        return <InstitutionalLoading />;
+    }
+
+    if (!medals || medals.length === 0) {
         return (
             <View style={[styles.container, { backgroundColor: theme.background }]}>
-                <Text style={{ color: theme.text }}>Carregando medalhas…</Text>
+                <Text style={[styles.header, { color: theme.primary }]}>
+                    Medalhas Institucionais
+                </Text>
+                <InstitutionalEmpty text="Início da trajetória institucional. Nenhuma medalha atribuída." />
             </View>
         );
     }

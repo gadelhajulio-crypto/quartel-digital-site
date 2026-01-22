@@ -2,15 +2,24 @@ import { View, Text, FlatList, StyleSheet } from 'react-native';
 import { useModulesProgress } from '../../../src/hooks/useModulesProgress';
 import { ModuleCard } from '../../../src/components/cards/ModuleCard';
 import { useForceTheme } from '../../../src/context/ForceThemeContext';
+import { InstitutionalLoading } from '../../../src/components/InstitutionalLoading';
+import { InstitutionalEmpty } from '../../../src/components/InstitutionalEmpty';
 
 export default function ModulosScreen() {
     const { theme } = useForceTheme();
     const { modules, loading } = useModulesProgress();
 
     if (loading) {
+        return <InstitutionalLoading />;
+    }
+
+    if (!modules || modules.length === 0) {
         return (
             <View style={[styles.container, { backgroundColor: theme.background }]}>
-                <Text style={{ color: theme.text }}>Carregando módulos…</Text>
+                <Text style={[styles.header, { color: theme.primary }]}>
+                    Módulos do Curso
+                </Text>
+                <InstitutionalEmpty text="Não há informações para exibição." />
             </View>
         );
     }

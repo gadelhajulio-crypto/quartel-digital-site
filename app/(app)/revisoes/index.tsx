@@ -3,6 +3,8 @@ import { useRouter } from 'expo-router';
 import { useAvailableReviews } from '../../../src/hooks/useAvailableReviews';
 import { ReviewCard } from '../../../src/components/cards/ReviewCard';
 import { useForceTheme } from '../../../src/context/ForceThemeContext';
+import { InstitutionalLoading } from '../../../src/components/InstitutionalLoading';
+import { InstitutionalEmpty } from '../../../src/components/InstitutionalEmpty';
 
 export default function RevisoesScreen() {
     const { theme } = useForceTheme();
@@ -10,9 +12,16 @@ export default function RevisoesScreen() {
     const { reviews, loading } = useAvailableReviews();
 
     if (loading) {
+        return <InstitutionalLoading />;
+    }
+
+    if (!reviews || reviews.length === 0) {
         return (
             <View style={[styles.container, { backgroundColor: theme.background }]}>
-                <Text style={{ color: theme.text }}>Carregando revisões…</Text>
+                <Text style={[styles.header, { color: theme.primary }]}>
+                    Revisões Disponíveis
+                </Text>
+                <InstitutionalEmpty text="Não há revisões disponíveis agora." />
             </View>
         );
     }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from 'react-native'
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native'
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router'
 import { supabase } from '../../../src/lib/supabase'
 import { useLessonData } from '../../../src/hooks/useLessonData'
@@ -9,6 +9,8 @@ import { PdfCard } from '../../../src/components/cards/PdfCard'
 import { useAuth } from '../../../src/context/AuthContext'
 import { useForceTheme } from '../../../src/context/ForceThemeContext' // Corrected context
 import { Header } from '../../../src/components/Header'
+import { InstitutionalLoading } from '../../../src/components/InstitutionalLoading'
+import { InstitutionalError } from '../../../src/components/InstitutionalError'
 
 export default function LessonScreen() {
     // Standardize param name to 'id' for the new route /aula/[id]
@@ -26,12 +28,12 @@ export default function LessonScreen() {
 
     const router = useRouter();
 
-    if (loading || !data) {
-        return (
-            <View style={[styles.container, styles.center, { backgroundColor: theme.background }]}>
-                <ActivityIndicator size="large" color={theme.accent || '#FFD166'} />
-            </View>
-        )
+    if (loading) {
+        return <InstitutionalLoading />;
+    }
+
+    if (!data) {
+        return <InstitutionalError />;
     }
 
     const blocked = isLessonBlocked(data)

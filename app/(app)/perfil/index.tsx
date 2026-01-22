@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useForceTheme } from '../../../src/context/ForceThemeContext';
 import { HierarchyBadge } from '../../../src/components/HierarchyBadge';
+import { InstitutionalLoading } from '../../../src/components/InstitutionalLoading';
 
 export default function PerfilScreen() {
     const { theme } = useForceTheme();
@@ -10,7 +11,7 @@ export default function PerfilScreen() {
     const router = useRouter();
 
     if (!profile) {
-        return null;
+        return <InstitutionalLoading />;
     }
 
     return (

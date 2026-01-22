@@ -2,15 +2,24 @@ import { View, Text, FlatList, StyleSheet } from 'react-native';
 import { useForceTheme } from '../../../src/context/ForceThemeContext';
 import { useStudentHistory } from '../../../src/hooks/useStudentHistory';
 import { HistoryRow } from '../../../src/components/rows/HistoryRow';
+import { InstitutionalLoading } from '../../../src/components/InstitutionalLoading';
+import { InstitutionalEmpty } from '../../../src/components/InstitutionalEmpty';
 
 export default function HistoricoScreen() {
     const { theme } = useForceTheme();
     const { history, loading } = useStudentHistory();
 
     if (loading) {
+        return <InstitutionalLoading />;
+    }
+
+    if (!history || history.length === 0) {
         return (
             <View style={[styles.container, { backgroundColor: theme.background }]}>
-                <Text style={{ color: theme.text }}>Carregando histórico…</Text>
+                <Text style={[styles.header, { color: theme.primary }]}>
+                    Histórico do Recruta
+                </Text>
+                <InstitutionalEmpty text="Nenhum registro disponível no momento." />
             </View>
         );
     }

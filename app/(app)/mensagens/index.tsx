@@ -3,6 +3,8 @@ import { useRouter } from 'expo-router';
 import { useForceTheme } from '../../../src/context/ForceThemeContext';
 import { useInstructorMessages } from '../../../src/hooks/useInstructorMessages';
 import { InstructorMessageCard } from '../../../src/components/cards/InstructorMessageCard';
+import { InstitutionalLoading } from '../../../src/components/InstitutionalLoading';
+import { InstitutionalEmpty } from '../../../src/components/InstitutionalEmpty';
 
 export default function MensagensInstrutorScreen() {
     const { theme } = useForceTheme();
@@ -10,9 +12,16 @@ export default function MensagensInstrutorScreen() {
     const { messages, loading, markAsRead } = useInstructorMessages();
 
     if (loading) {
+        return <InstitutionalLoading />;
+    }
+
+    if (!messages || messages.length === 0) {
         return (
             <View style={[styles.container, { backgroundColor: theme.background }]}>
-                <Text style={{ color: theme.text }}>Carregando mensagens…</Text>
+                <Text style={[styles.header, { color: theme.primary }]}>
+                    Mensagens do Instrutor
+                </Text>
+                <InstitutionalEmpty text="Nenhum registro disponível no momento." />
             </View>
         );
     }
