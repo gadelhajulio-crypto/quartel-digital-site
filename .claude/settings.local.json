@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"C:/Projetos/quartel-digital-mobile/quartel-digital-site\" && npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-git --yes 2>&1)",
+      "Bash(cd \"C:/Projetos/quartel-digital-mobile/quartel-digital-site\" && npm install framer-motion 2>&1)",
+      "Bash(cd \"C:/Projetos/quartel-digital-mobile/quartel-digital-site\" && npm run build 2>&1)",
+      "Bash(cd \"C:/Projetos/quartel-digital-mobile/quartel-digital-site\" && npm run dev 2>&1)",
+      "Bash(cd \"C:/Projetos/quartel-digital-mobile/quartel-digital-site\" && npm install framer-motion lucide-react clsx tailwind-merge class-variance-authority 2>&1)",
+      "Bash(cd \"C:/Projetos/quartel-digital-mobile/quartel-digital-site\" && npx shadcn@latest init --yes --defaults 2>&1)",
+      "Bash(cd \"C:/Projetos/quartel-digital-mobile/quartel-digital-site\" && npx shadcn@latest add button card badge separator accordion --yes 2>&1)",
+      "Bash(vercel --version 2>/dev/null || echo \"vercel not installed\")",
+      "Bash(cd \"C:\\\\Projetos\\\\quartel-digital-mobile\\\\quartel-digital-site\" && npm run build 2>&1)",
+      "Bash(npm install:*)",
+      "Bash(cd \"C:\\\\Projetos\\\\quartel-digital-mobile\\\\quartel-digital-site\" && vercel deploy --yes 2>&1)",
+      "Bash(cd \"C:\\\\Projetos\\\\quartel-digital-mobile\\\\quartel-digital-site\" && vercel domains add recrutapadrao.com.br 2>&1)",
+      "Bash(cd \"C:\\\\Projetos\\\\quartel-digital-mobile\\\\quartel-digital-site\" && vercel domains add www.recrutapadrao.com.br 2>&1)",
+      "Bash(cd \"C:\\\\Projetos\\\\quartel-digital-mobile\\\\quartel-digital-site\" && vercel domains inspect recrutapadrao.com.br 2>&1)",
+      "Bash(nslookup recrutapadrao.com.br 8.8.8.8 2>&1)",
+      "Bash(ping -n 2 8.8.8.8 > /dev/null 2>&1; nslookup recrutapadrao.com.br 1.1.1.1 2>&1)",
+      "Bash(cd \"C:\\\\Projetos\\\\quartel-digital-mobile\\\\quartel-digital-site\" && vercel inspect quartel-digital-site-9sm00fwpo-gadelhajulio-5435s-projects.vercel.app 2>&1 | grep -A5 -i \"domain\\\\|alias\\\\|url\")",
+      "Bash(cd \"C:\\\\Projetos\\\\quartel-digital-mobile\\\\quartel-digital-site\" && vercel alias set quartel-digital-site-9sm00fwpo-gadelhajulio-5435s-projects.vercel.app recrutapadrao.com.br 2>&1 && vercel alias set quartel-digital-site-9sm00fwpo-gadelhajulio-5435s-projects.vercel.app www.recrutapadrao.com.br 2>&1)",
+      "Bash(cd \"C:\\\\Projetos\\\\quartel-digital-mobile\\\\quartel-digital-site\" && vercel deploy --prod 2>&1)",
+      "Bash(cd \"/c/Projetos/quartel-digital-mobile/quartel-digital-site\" && npx tsc --noEmit 2>&1 | head -40)",
+      "Bash(cd \"/c/Projetos/quartel-digital-mobile/quartel-digital-site\" && npx next build 2>&1 | tail -20)",
+      "Bash(npm run:*)",
+      "Bash(git add:*)",
+      "Bash(git remote:*)",
+      "Bash(git -C /c/Projetos/quartel-digital-mobile add quartel-digital-site/package.json quartel-digital-site/package-lock.json && git -C /c/Projetos/quartel-digital-mobile commit -m \"fix: resolve react/react-dom version mismatch\" && git -C /c/Projetos/quartel-digital-mobile push origin HEAD:main 2>&1)",
+      "Bash(git -C /c/Projetos/quartel-digital-mobile status quartel-digital-site/package.json quartel-digital-site/package-lock.json 2>&1)",
+      "Bash(git -C /c/Projetos/quartel-digital-mobile add quartel-digital-site/next.config.ts && git -C /c/Projetos/quartel-digital-mobile commit -m \"fix: set turbopack.root to resolve @/ alias in monorepo\" && git -C /c/Projetos/quartel-digital-mobile push origin HEAD:main 2>&1)",
+      "Bash(git init:*)"
+    ]
+  }
+}
