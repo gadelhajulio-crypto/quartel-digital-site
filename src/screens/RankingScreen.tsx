@@ -45,20 +45,19 @@ export default function RankingScreen({
       setLoading(true);
 
       const { data: ranking } = await supabase
-        .from("vw_ranking_mensal")
+        .from("v_ranking_mensal_rcc")
         .select("*")
         .eq("forca", forca)
         .order("posicao")
         .limit(20);
 
       const { data: minha } = await supabase
-        .from("vw_posicao_recruta_mes")
+        .from("v_posicao_recruta_mes_rcc")
         .select("*")
-        .eq("recruta_id", recrutaId)
         .single();
 
       const { data: campeoesData } = await supabase
-        .from("campeoes_mensais")
+        .from("v_campeoes_mensais_rcc")
         .select("recruta_id, forca, premiado")
         .eq("forca", forca);
 
