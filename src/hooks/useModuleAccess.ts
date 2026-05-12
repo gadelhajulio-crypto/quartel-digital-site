@@ -1,13 +1,11 @@
 // 1️⃣ Definições de Tipo Locais (Blindagem contra erros de import)
 export interface Profile {
     id: string;
-    email: string;
     tipo_acesso: 'degustacao' | 'completo' | 'admin';
     paid_at?: string | null;
-    created_at?: string;
     [key: string]: any;
 }
-export type Modulo = { id: string; title: string; is_degustacao: boolean; description?: string;[key: string]: any; };
+export type Modulo = { id: string; titulo: string; is_degustacao: boolean; descricao?: string;[key: string]: any; };
 
 // 2️⃣ Lógica de Controle de Acesso 
 export const canAccessModule = ({ profile, modulo, }: { profile: Profile | null; modulo: Modulo; }): boolean => {

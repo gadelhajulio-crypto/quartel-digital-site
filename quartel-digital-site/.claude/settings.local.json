@@ -23,7 +23,12 @@
       "Bash(cd \"/c/Projetos/quartel-digital-mobile/quartel-digital-site\" && npx tsc --noEmit 2>&1 | head -40)",
       "Bash(cd \"/c/Projetos/quartel-digital-mobile/quartel-digital-site\" && npx next build 2>&1 | tail -20)",
       "Bash(npm run:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git remote:*)",
+      "Bash(git -C /c/Projetos/quartel-digital-mobile add quartel-digital-site/package.json quartel-digital-site/package-lock.json && git -C /c/Projetos/quartel-digital-mobile commit -m \"fix: resolve react/react-dom version mismatch\" && git -C /c/Projetos/quartel-digital-mobile push origin HEAD:main 2>&1)",
+      "Bash(git -C /c/Projetos/quartel-digital-mobile status quartel-digital-site/package.json quartel-digital-site/package-lock.json 2>&1)",
+      "Bash(git -C /c/Projetos/quartel-digital-mobile add quartel-digital-site/next.config.ts && git -C /c/Projetos/quartel-digital-mobile commit -m \"fix: set turbopack.root to resolve @/ alias in monorepo\" && git -C /c/Projetos/quartel-digital-mobile push origin HEAD:main 2>&1)",
+      "Bash(git init:*)"
     ]
   }
 }

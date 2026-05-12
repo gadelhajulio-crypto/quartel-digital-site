@@ -27,8 +27,8 @@ export const fetchLessons = async () => {
 
 export const fetchLessonById = async (id: string) => {
     return await supabase
-        .from('lessons')
+        .from('v_lessons_panel')
         .select('*')
-        .eq('id', id)
+        .eq('lesson_id', id)
         .maybeSingle();
 };

@@ -67,10 +67,11 @@ export default function ModuleLessonsScreen() {
     async function loadAulas() {
         try {
             const { data, error } = await supabase
-                .from('aulas')
-                .select('id, titulo, ordem') // Temporarily removed video_url and pdf_url to prevent crash
-                .eq('modulo_id', moduloId)
-                .order('ordem');
+                .from('v_lessons_panel')
+                // Map View columns to Component State columns (Aula type)
+                .select('id:lesson_id, titulo:title, ordem:lesson_order, video_url, pdf_url')
+                .eq('module', moduloId)
+                .order('lesson_order');
 
             if (error) throw error;
             if (data) setAulas(data);
@@ -83,15 +84,14 @@ export default function ModuleLessonsScreen() {
         try {
             if (!userId) return;
             const { data, error } = await supabase
-                .from('progresso_aulas')
-                .select('aula_id')
+                .from('v_lesson_progress_panel')
+                .select('lesson_id')
                 .eq('user_id', userId);
-            // .eq('concluida', true); // Removed as per request
 
             if (error) throw error;
 
             if (data) {
-                setConcluidas(data.map((item) => item.aula_id));
+                setConcluidas(data.map((item: { lesson_id: string }) => item.lesson_id));
             }
         } catch (err) {
             console.error('Error loading concluidas:', err);

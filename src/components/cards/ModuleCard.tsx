@@ -25,32 +25,32 @@ export function ModuleCard({
                 styles.card,
                 {
                     backgroundColor: theme.card,
-                    borderColor: theme.border,
+                    borderColor: theme.secondary || '#333', // Fallback
                 },
             ]}
         >
-            <Text style={[styles.title, { color: theme.text }]}>
-                {moduleName}
+            <Text style={[styles.title, { color: theme.textPrimary }]}>
+                {moduleName || 'Módulo sem título cadastrado'}
             </Text>
 
-            <Text style={[styles.subtitle, { color: theme.muted }]}>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
                 {completedLessons} de {totalLessons} aulas concluídas
             </Text>
 
             {/* Barra de progresso simples */}
-            <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
+            <View style={[styles.progressTrack, { backgroundColor: theme.background }]}>
                 <View
                     style={[
                         styles.progressFill,
                         {
                             width: `${progressPercent}%`,
-                            backgroundColor: theme.primary,
+                            backgroundColor: theme.accent || theme.primary,
                         },
                     ]}
                 />
             </View>
 
-            <Text style={[styles.percent, { color: theme.muted }]}>
+            <Text style={[styles.percent, { color: theme.textSecondary }]}>
                 {progressPercent}%
             </Text>
         </TouchableOpacity>

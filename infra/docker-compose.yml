@@ -1,0 +1,107 @@
+# ============================================================
+# Quartel Digital — VPS KVM1
+# Stack: n8n + cloudflared
+# ============================================================
+# Supabase, Stripe e app mobile são EXTERNOS — nunca adicionar aqui.
+# A VPS é apenas orquestrador. O banco (Supabase) é a fonte de verdade.
+# ============================================================
+
+version: "3.8"
+
+services:
+
+  # ──────────────────────────────────────────────────────────
+  # n8n — orquestrador institucional de workflows
+  # ──────────────────────────────────────────────────────────
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: quartel-n8n
+    restart: always
+    ports:
+      # Bind apenas no loopback — cloudflared acessa via rede Docker interna.
+      # A porta 5678 nunca é exposta diretamente para a internet.
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+    environment:
+      # ── URL pública (usada internamente pelo n8n para montar URLs de webhook) ──
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL}
+
+      # ── Segurança ────────────────────────────────────────────────────────────
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=${N8N_BLOCK_ENV_ACCESS_IN_NODE:-false}
+
+      # ── Secrets institucionais (acessados via $env nos nodes Code) ───────────
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - QD_HMAC_SECRET=${QD_HMAC_SECRET}
+
+      # ── Node.js ──────────────────────────────────────────────────────────────
+      - NODE_FUNCTION_ALLOW_BUILTIN=${NODE_FUNCTION_ALLOW_BUILTIN:-crypto}
+      # Limita heap a 512MB — essencial no KVM1 para não disparar OOM killer
+      - NODE_OPTIONS=--max-old-space-size=512
+
+      # ── Concorrência ─────────────────────────────────────────────────────────
+      - N8N_CONCURRENCY_PRODUCTION_LIMIT=5
+
+      # ── Execuções — pruning para manter SQLite leve ──────────────────────────
+      - EXECUTIONS_DATA_PRUNE=${EXECUTIONS_DATA_PRUNE:-true}
+      - EXECUTIONS_DATA_MAX_AGE=${EXECUTIONS_DATA_MAX_AGE:-168}
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=${EXECUTIONS_DATA_SAVE_ON_SUCCESS:-none}
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=${EXECUTIONS_DATA_SAVE_ON_ERROR:-all}
+      - EXECUTIONS_DATA_SAVE_ON_PROGRESS=${EXECUTIONS_DATA_SAVE_ON_PROGRESS:-false}
+      - EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=true
+
+      # ── Timezone ─────────────────────────────────────────────────────────────
+      - GENERIC_TIMEZONE=America/Sao_Paulo
+      - TZ=America/Sao_Paulo
+
+      # ── Logs ─────────────────────────────────────────────────────────────────
+      - N8N_LOG_LEVEL=info
+      - N8N_LOG_OUTPUT=console
+
+    networks:
+      - quartel-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ──────────────────────────────────────────────────────────
+  # cloudflared — túnel persistente Cloudflare Zero Trust
+  # Expõe n8n para internet sem abrir portas na VPS.
+  # Target configurado no painel CF: http://n8n:5678
+  # ──────────────────────────────────────────────────────────
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: quartel-cloudflared
+    restart: always
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TUNNEL_TOKEN}
+    depends_on:
+      n8n:
+        condition: service_healthy
+    networks:
+      - quartel-net
+
+# ──────────────────────────────────────────────────────────
+# Volume — bind mount explícito para facilitar backup
+# Os dados do n8n ficam em /opt/quartel-digital/n8n-data/
+# ──────────────────────────────────────────────────────────
+volumes:
+  n8n-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/quartel-digital/n8n-data
+
+# ──────────────────────────────────────────────────────────
+# Rede interna Docker
+# cloudflared → n8n:5678 (sem passar pelo host)
+# ──────────────────────────────────────────────────────────
+networks:
+  quartel-net:
+    driver: bridge

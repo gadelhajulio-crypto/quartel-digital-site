@@ -5,5 +5,7 @@
     ],
     "deno.unstable": true,
     "deno.lint": true,
-    "deno.importMap": "./supabase/functions/import_map.json"
+    "deno.importMap": "./supabase/functions/import_map.json",
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.configuration.updateBuildConfiguration": "interactive"
 }

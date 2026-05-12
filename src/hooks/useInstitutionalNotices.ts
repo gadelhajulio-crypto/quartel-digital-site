@@ -35,12 +35,10 @@ export function useInstitutionalNotices() {
     }
 
     async function markAsRead(noticeId: string) {
-        // Registro simples de leitura (sem lógica de decisão)
-        await supabase
-            .from('institutional_notice_reads')
-            .insert({ notice_id: noticeId });
+        // rpc_mark_notice_read: idempotente via ON CONFLICT DO NOTHING no banco
+        await supabase.rpc('rpc_mark_notice_read', { p_notice_id: noticeId });
 
-        // Atualização local apenas para refletir UI
+        // Atualização local apenas para refletir UI imediatamente
         setNotices((prev) =>
             prev.map((n) =>
                 n.notice_id === noticeId ? { ...n, is_read: true } : n

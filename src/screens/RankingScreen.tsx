@@ -9,6 +9,7 @@ import {
   SafeAreaView,
 } from "react-native";
 import { supabase } from "../lib/supabase";
+import { useForceTheme } from "../context/ForceThemeContext";
 
 type RankingItem = {
   recruta_id: string;
@@ -35,6 +36,9 @@ export default function RankingScreen({
   forca,
   onVoltar,
 }: Props) {
+  const { theme } = useForceTheme(); // Use Theme
+  const styles = getStyles(theme);
+
   const [top20, setTop20] = useState<RankingItem[]>([]);
   const [minhaPosicao, setMinhaPosicao] = useState<RankingItem | null>(null);
   const [campeoes, setCampeoes] = useState<Campeao[]>([]);
@@ -88,7 +92,7 @@ export default function RankingScreen({
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color="#FFFFFF" />
+          <ActivityIndicator size="large" color={theme.accent || '#FFD166'} />
         </View>
       ) : (
         <View style={styles.container}>
@@ -138,10 +142,10 @@ export default function RankingScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (theme: any) => StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#0F172A",
+    backgroundColor: theme.background,
   },
   center: {
     flex: 1,
@@ -154,15 +158,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: "#020617",
+    backgroundColor: theme.background,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
   },
   headerTitulo: {
-    color: "#FFFFFF",
+    color: theme.textPrimary,
     fontSize: 18,
     fontWeight: "bold",
   },
   voltar: {
-    color: "#38BDF8",
+    color: theme.secondary || "#38BDF8",
     fontSize: 16,
   },
   container: {
@@ -170,53 +176,55 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   subtitulo: {
-    color: "#94A3B8",
+    color: theme.textSecondary,
     textAlign: "center",
     marginBottom: 12,
   },
   item: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#020617",
+    backgroundColor: theme.card,
     padding: 12,
     borderRadius: 6,
     marginBottom: 8,
   },
   campeao: {
     borderWidth: 1,
-    borderColor: "#FACC15",
+    borderColor: theme.accent || "#FACC15",
   },
   posicao: {
-    color: "#FACC15",
+    color: theme.accent || "#FACC15",
     fontWeight: "bold",
     width: 40,
   },
   nome: {
-    color: "#FFFFFF",
+    color: theme.textPrimary,
     fontSize: 16,
   },
   badge: {
-    color: "#FACC15",
+    color: theme.accent || "#FACC15",
     fontSize: 12,
     marginTop: 2,
   },
   xp: {
-    color: "#22C55E",
+    color: theme.success || "#22C55E",
     fontWeight: "bold",
   },
   minhaPosicao: {
     marginTop: 16,
     padding: 12,
     borderRadius: 6,
-    backgroundColor: "#1E293B",
+    backgroundColor: theme.card,
+    borderWidth: 1,
+    borderColor: theme.border,
   },
   minhaTitulo: {
-    color: "#94A3B8",
+    color: theme.textSecondary,
     fontSize: 12,
     marginBottom: 4,
   },
   minhaTexto: {
-    color: "#FFFFFF",
+    color: theme.textPrimary,
     fontSize: 16,
     fontWeight: "bold",
   },

@@ -1,0 +1,170 @@
+import React, { useEffect, useRef } from 'react';
+import {
+  Animated,
+  Image,
+  ImageSourcePropType,
+  Platform,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { tatico } from '../../design/themes/tatico';
+
+const AVATAR_SIZE = 62;           // maior: rosto domina o círculo
+const RING_SIZE = AVATAR_SIZE + 8; // halo fica atrás do rosto, não compete
+
+type Props = {
+  avatarSource: ImageSourcePropType; // aceita require() e { uri: '...' }
+  glowColor: string;
+  onPress: () => void;
+  active?: boolean;
+};
+
+export function InstructorAvatar({ avatarSource, glowColor, onPress, active = false }: Props) {
+  // Idle ring pulse
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+  // Press scale
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  // Idle loop: subtle opacity pulse on the ring
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulseAnim]);
+
+  const ringOpacity = pulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.15, 0.47],
+  });
+
+  const ringScale = pulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1.0, 1.06],
+  });
+
+  function handlePressIn() {
+    Animated.spring(scaleAnim, {
+      toValue: 0.93,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 0,
+    }).start();
+  }
+
+  function handlePressOut() {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 30,
+      bounciness: 4,
+    }).start();
+  }
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={1}
+      style={styles.wrapper}
+    >
+      {/* Animated ring */}
+      <Animated.View
+        style={[
+          styles.ring,
+          {
+            borderColor: glowColor,
+            opacity: ringOpacity,
+            transform: [{ scale: ringScale }],
+          },
+        ]}
+      />
+
+      {/* Avatar circle */}
+      <Animated.View
+        style={[
+          styles.avatarContainer,
+          {
+            backgroundColor: tatico.colors.card,
+            borderColor: active ? glowColor : tatico.colors.border,
+            transform: [{ scale: scaleAnim }],
+            // Glow via shadow — sutil, não exagerado
+            ...Platform.select({
+              ios: {
+                shadowColor: glowColor,
+                shadowOpacity: active ? 0.5 : 0.25,
+                shadowRadius: active ? 8 : 4,
+                shadowOffset: { width: 0, height: 0 },
+              },
+              android: {
+                elevation: active ? 8 : 4,
+              },
+            }),
+          },
+        ]}
+      >
+        <Image source={avatarSource} style={styles.avatar} resizeMode="cover" />
+      </Animated.View>
+
+      {/* Status operacional — indicador diamante */}
+      <View
+        style={[
+          styles.statusIndicator,
+          { backgroundColor: glowColor, borderColor: tatico.colors.card },
+        ]}
+      />
+    </TouchableOpacity>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrapper: {
+    width: RING_SIZE,
+    height: RING_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -18,
+  },
+  ring: {
+    position: 'absolute',
+    width: RING_SIZE,
+    height: RING_SIZE,
+    borderRadius: RING_SIZE / 2,
+    borderWidth: 1,
+  },
+  avatarContainer: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+  },
+  avatar: {
+    width: '100%',
+    height: '100%',
+  },
+  statusIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 7,
+    height: 7,
+    borderRadius: 1,          // leve arredondamento — não um círculo perfeito
+    transform: [{ rotate: '45deg' }], // diamante
+    borderWidth: 1.5,
+  },
+});

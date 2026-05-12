@@ -1,4 +1,3 @@
-
 export type ForceTheme = {
   primary: string;
   secondary: string;
@@ -11,6 +10,16 @@ export type ForceTheme = {
   // Button Colors
   btnPrimary: string;
   btnSecondary: string;
+  // Dashboard Specific (Light Theme)
+  dashboard: {
+    background: string;
+    card: string;
+    textPrimary: string;
+    textSecondary: string;
+    accent: string;
+    border: string;
+    headerOverlay: string;
+  }
 };
 
 // Faithful Palette Definition (Updated per Spec)
@@ -27,7 +36,7 @@ export const colors = {
   // Backward compatibility aliases
   surface: '#112A3F',
   text: '#FFFFFF',
-  oliveIntense: '#0B1C2D', // Mapping to background for safety
+  oliveIntense: '#0B1C2D',
   graphite: '#112A3F',
   navyBack: '#0B1C2D',
   navySurf: '#112A3F',
@@ -42,8 +51,8 @@ export const colors = {
   btnSecondary: '#112A3F',
   primary: '#C9A24D',
   secondary: '#C9A24D',
-  cardSecondary: '#1C1C1C', // Legacy
-  muted: '#2A2A2A',      // Legacy
+  cardSecondary: '#1C1C1C',
+  muted: '#2A2A2A',
   black: '#000000',
   success: '#2D6A4F',
   warning: '#B7950B',
@@ -51,7 +60,7 @@ export const colors = {
 };
 
 export const typography = {
-  regular: 'Inter_400Regular', // Ensure fonts are loaded in _layout or index
+  regular: 'Inter_400Regular',
   medium: 'Inter_500Medium',
   semiBold: 'Inter_600SemiBold',
   bold: 'Inter_700Bold',
@@ -73,11 +82,20 @@ export const theme = {
       warning: colors.warning,
       btnPrimary: colors.gold,
       btnSecondary: colors.card,
+      dashboard: {
+        background: '#F5F7FA',
+        card: '#FFFFFF',
+        textPrimary: '#1E4620', // Army Green Dark
+        textSecondary: '#5A6C58',
+        accent: '#283618', // Army Strong Green
+        border: 'rgba(0,0,0,0.05)',
+        headerOverlay: 'rgba(255,255,255,0.85)',
+      }
     },
     navy: {
       primary: colors.gold,
       secondary: colors.gold,
-      background: '#0B1C2D', // Explicit Navy
+      background: '#0B1C2D',
       surface: '#112A3F',
       text: colors.textPrimary,
       locked: colors.locked,
@@ -85,6 +103,15 @@ export const theme = {
       warning: colors.warning,
       btnPrimary: colors.card,
       btnSecondary: colors.disabled,
+      dashboard: {
+        background: '#F5F7FA',
+        card: '#FFFFFF',
+        textPrimary: '#0A2540', // Navy Dark
+        textSecondary: '#6C849A',
+        accent: '#003366', // Naval Blue
+        border: 'rgba(0,0,0,0.05)',
+        headerOverlay: 'rgba(255,255,255,0.85)',
+      }
     },
     airforce: {
       primary: '#B0C4DE',
@@ -97,6 +124,15 @@ export const theme = {
       warning: colors.warning,
       btnPrimary: '#2C3E50',
       btnSecondary: colors.disabled,
+      dashboard: {
+        background: '#F5F7FA',
+        card: '#FFFFFF',
+        textPrimary: '#0A1A2F',
+        textSecondary: '#718096',
+        accent: '#003A8F', // Airforce Blue
+        border: 'rgba(0,0,0,0.05)',
+        headerOverlay: 'rgba(255,255,255,0.85)',
+      }
     }
   },
   spacing: {

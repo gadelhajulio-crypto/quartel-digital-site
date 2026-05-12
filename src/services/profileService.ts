@@ -13,12 +13,10 @@ export async function saveInstructorProfile(
         throw new Error('Usuário não autenticado');
     }
 
-    const { error } = await supabase
-        .from('profiles')
-        .update({
-            instructor_profile_id: instructorId,
-        })
-        .eq('id', user.id);
+    // rpc_set_instructor_profile: SECURITY DEFINER usa auth.uid() internamente
+    const { error } = await supabase.rpc('rpc_set_instructor_profile', {
+        p_instructor_id: instructorId,
+    });
 
     if (error) {
         throw error;

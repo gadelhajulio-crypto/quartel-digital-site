@@ -1,5 +1,5 @@
 import { View, StyleSheet } from 'react-native';
-import { Video } from 'expo-av';
+import { Video, ResizeMode } from 'expo-av';
 import { useForceTheme } from '../../context/ForceThemeContext';
 
 interface ReviewVideoPlayerProps {
@@ -23,7 +23,7 @@ export function ReviewVideoPlayer({ sourceUrl }: ReviewVideoPlayerProps) {
                 source={{ uri: sourceUrl }}
                 style={styles.video}
                 useNativeControls
-                resizeMode="contain"
+                resizeMode={ResizeMode.CONTAIN}
                 shouldPlay={false}
             />
         </View>

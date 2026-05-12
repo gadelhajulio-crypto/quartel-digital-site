@@ -25,7 +25,7 @@ export function AudioCard({ uri, blocked }: AudioCardProps) {
             <Text style={styles.title}>🎧 Revisão em Áudio</Text>
             {!blocked && uri && (
                 <TouchableOpacity onPress={play} style={styles.button}>
-                    <Ionicons name="play" size={24} color="#000" />
+                    <Ionicons name="play" size={24} color={theme.colors.background} />
                     <Text style={styles.buttonText}>Ouvir</Text>
                 </TouchableOpacity>
             )}
@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     buttonText: {
-        color: '#000',
+        color: theme.colors.background,
         fontWeight: 'bold',
     }
 });

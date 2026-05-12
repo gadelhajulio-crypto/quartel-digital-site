@@ -17,8 +17,8 @@ import { useRouter } from 'expo-router';
 type Modulo = {
     id: string;
     titulo: string;
-    descricao: string;
-    is_degustacao: boolean;
+    is_degustacao?: boolean;
+    descricao?: string;
 };
 
 export default function ModulesScreen() {
@@ -35,18 +35,12 @@ export default function ModulesScreen() {
         // Ensuring we select the correct columns. Check if 'titulo' exists or needs mapping.
         // Based on user prompt: id, titulo, descricao, is_degustacao
         const { data, error } = await supabase
-            .from('modulos')
-            .select('id, titulo, ordem, forca, descricao, is_degustacao')
-            // .eq('forca', 'marinha') // SECURITY: Hardcoded force for now (DISABLED FOR DEBUG)
-            .order('ordem');
-
-        console.log('MODULOS:', { data, error });
+            .from('vw_recruta_module_progress_v2')
+            .select('id:module_id, titulo:module_title');
 
         if (error) {
             console.error('Error fetching modules:', error);
         }
-
-        console.log('RESPOSTA BANCO (Modulos):', { data, error });
 
         if (!error && data) {
             setModules(data);
@@ -65,7 +59,7 @@ export default function ModulesScreen() {
 
     // 🔑 FILTRO SILENCIOSO
     const visibleModules = modules.filter((modulo) =>
-        canAccessModule({ profile, modulo })
+        canAccessModule({ profile, modulo: { ...modulo, is_degustacao: modulo.is_degustacao ?? false } })
     );
 
     return (
@@ -81,7 +75,7 @@ export default function ModulesScreen() {
                             pathname: `/modulo/${item.id}`,
                             params: {
                                 moduloTitulo: item.titulo,
-                                isDegustacao: String(item.is_degustacao)
+                                isDegustacao: String(item.is_degustacao ?? false)
                             }
                         })}
                     >

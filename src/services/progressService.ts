@@ -1,46 +1,29 @@
 import { supabase } from '../lib/supabase';
 import { Profile } from '../context/AuthContext';
+import { registerXp } from './xpService';
 
-export const startModule = async (moduloId: string, userId: string) => {
+export const startModule = async (moduloId: string, _userId: string) => {
     try {
-        // Check if entry exists to avoid overwriting existing first_access
-        const { data: existing } = await supabase
-            .from('recruta_modulos')
-            .select('*')
-            .eq('recruta_id', userId)
-            .eq('modulo_id', moduloId)
-            .single();
-
-        if (existing) return; // Already started
-
-        // Create new entry
-        const { error } = await supabase
-            .from('recruta_modulos')
-            .upsert({
-                recruta_id: userId,
-                modulo_id: moduloId,
-                first_access_at: new Date(),
-                status: 'in_progress',
-            }, { onConflict: 'recruta_id, modulo_id' });
-
+        // rpc_start_module: idempotente via ON CONFLICT DO NOTHING no banco
+        const { error } = await supabase.rpc('rpc_start_module', {
+            p_modulo_id: moduloId,
+        });
         if (error) throw error;
     } catch (err) {
         console.error('[PROGRESS] Error starting module:', err);
     }
 };
 
-export const completeModule = async (moduloId: string, userId: string) => {
+export const completeModule = async (moduloId: string, _userId: string) => {
     try {
-        const { error } = await supabase
-            .from('recruta_modulos')
-            .update({
-                completed_at: new Date(),
-                status: 'completed',
-            })
-            .eq('recruta_id', userId)
-            .eq('modulo_id', moduloId);
-
+        // rpc_complete_module: idempotente via WHERE status != 'completed' no banco
+        const { error } = await supabase.rpc('rpc_complete_module', {
+            p_modulo_id: moduloId,
+        });
         if (error) throw error;
+
+        // Bônus de XP por conclusão de módulo (evento separado)
+        await registerXp(500, `Módulo Concluído: ${moduloId}`, moduloId);
     } catch (err) {
         console.error('[PROGRESS] Error completing module:', err);
     }
@@ -64,18 +47,17 @@ export const checkModuleAccess = (
 
 export const completeLesson = async (lessonId: string, userId: string) => {
     try {
-        const { error } = await supabase
-            .from('recruta_licoes')
-            .upsert({
-                id: undefined, // Let DB generate ID if needed, or composite key
-                recruta_id: userId,
-                licao_id: lessonId,
-                completed_at: new Date(),
-            }, { onConflict: 'recruta_id, licao_id' });
+        const { error } = await supabase.rpc('complete_lesson', {
+            p_recruta_id: userId,
+            p_lesson_id: lessonId
+        });
 
         if (error) throw error;
-        // console.log('[PROGRESS] Lesson completed:', lessonId);
+
+        // XP is handled by RPC now.
+
     } catch (err) {
         console.error('[PROGRESS] Error completing lesson:', err);
+        throw err; // Propagate error for UI handling
     }
 };

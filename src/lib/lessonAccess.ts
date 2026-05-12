@@ -3,15 +3,7 @@ import { Lesson } from '../types/lesson';
 export function isLessonBlocked(lesson: Lesson): boolean {
     if (!lesson) return true; // Safety check
 
-    // 1. Apenas módulo RDM
-    if (lesson.module !== 'regulamento-disciplinar-marinha') {
-        return true;
-    }
-
-    // 2. Apenas as 3 primeiras aulas
-    if (lesson.lesson_order > 3) {
-        return true;
-    }
-
+    // C2 FIX: Controle de acesso é feito no nível do Módulo ou via Rules Engine do Supabase.
+    // O frontend não deve bloquear com strings hardcoded.
     return false;
 }

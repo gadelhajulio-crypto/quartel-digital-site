@@ -13,40 +13,45 @@ export function useLessonData(lessonId: string, userId?: string) {
                 return;
             }
 
-            // Updated to use strict schema: lesson_progress
-            const { data, error } = await supabase
-                .from('lessons')
-                .select(`
-          id,
-          title,
-          module,
-          lesson_order,
-          lesson_media (
-            id,
-            type,
-            url
-          ),
-          lesson_progress (
-            completed_at,
-            user_id
-          )
-        `)
-                .eq('id', lessonId)
-                .eq('lesson_progress.user_id', userId)
+            // 1. Fetch Lesson Data from VIEW
+            const { data: lessonData, error: lessonError } = await supabase
+                .from('v_lessons_panel')
+                .select('*')
+                .eq('lesson_id', lessonId)
                 .maybeSingle();
 
-            if (error) {
-                console.error('Error fetching lesson data:', error);
+            if (lessonError) {
+                console.error('Error fetching lesson data:', lessonError);
+                setLoading(false);
+                return;
             }
 
-            const adaptedData: any = data;
-
-            // Adapt array response from 1:N relation to single object for UI consumption
-            if (adaptedData && Array.isArray(adaptedData.lesson_progress)) {
-                adaptedData.lesson_progress = adaptedData.lesson_progress.find((p: any) => p.user_id === userId) || null;
+            if (!lessonData) {
+                setLoading(false);
+                return;
             }
 
-            setData(adaptedData as Lesson);
+            // 2. Fetch Progress from VIEW
+            const { data: progressData } = await supabase
+                .from('v_lesson_progress_panel')
+                .select('completed_at')
+                .eq('lesson_id', lessonId)
+                .eq('recruta_id', userId)
+                .maybeSingle();
+
+            // 3. Adapt to Lesson interface (contrato C6 — v_lessons_panel)
+            const adaptedLesson: Lesson = {
+                lesson_id: lessonData.lesson_id,
+                title: lessonData.title,
+                module: lessonData.module,
+                lesson_order: lessonData.lesson_order,
+                force: lessonData.force,
+                video_url: lessonData.video_url ?? null,
+                pdf_url: lessonData.pdf_url ?? null,
+                completed_at: progressData?.completed_at ?? null,
+            };
+
+            setData(adaptedLesson);
             setLoading(false);
         }
 

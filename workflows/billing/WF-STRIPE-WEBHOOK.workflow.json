@@ -1,0 +1,230 @@
+{
+  "name": "WF-STRIPE-WEBHOOK",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "billing/stripe",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "Stripe Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "stripe-billing-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Valida assinatura Stripe (timing-safe) ────────────────────────────────\nconst crypto = require('crypto');\n\nconst rawBody = $input.first().json.rawBody ?? $input.first().json.body ?? '';\nif (!rawBody) throw new Error('MISSING_RAW_BODY');\n\nconst sigHeader = $input.first().json.headers?.['stripe-signature'] ?? '';\nif (!sigHeader) throw new Error('MISSING_STRIPE_SIGNATURE');\n\nconst secret = $env.STRIPE_WEBHOOK_SECRET;\nif (!secret) throw new Error('MISSING_WEBHOOK_SECRET');\n\n// Stripe-Signature: t=timestamp,v1=sig1,...\nconst parts = {};\nsigHeader.split(',').forEach(part => {\n  const idx = part.indexOf('=');\n  if (idx > 0) parts[part.slice(0, idx)] = part.slice(idx + 1);\n});\n\nconst timestamp = parts['t'];\nconst v1 = parts['v1'];\n\nif (!timestamp || !v1) throw new Error('INVALID_SIGNATURE_FORMAT');\n\n// Tolerância de 5 minutos\nconst now = Math.floor(Date.now() / 1000);\nif (Math.abs(now - parseInt(timestamp, 10)) > 300) {\n  throw new Error('SIGNATURE_TIMESTAMP_TOO_OLD');\n}\n\nconst signedPayload = `${timestamp}.${rawBody}`;\nconst expectedSig = crypto\n  .createHmac('sha256', secret)\n  .update(signedPayload, 'utf8')\n  .digest('hex');\n\n// Timing-safe comparison\nlet diff = 0;\nif (expectedSig.length !== v1.length) throw new Error('STRIPE_SIGNATURE_MISMATCH');\nfor (let i = 0; i < expectedSig.length; i++) {\n  diff |= expectedSig.charCodeAt(i) ^ v1.charCodeAt(i);\n}\nif (diff !== 0) throw new Error('STRIPE_SIGNATURE_MISMATCH');\n\n// Parse do evento validado\nlet event;\ntry {\n  event = JSON.parse(rawBody);\n} catch {\n  throw new Error('INVALID_JSON_BODY');\n}\n\nconsole.log('[WF-STRIPE] signature_valid', {\n  event_id: event.id,\n  event_type: event.type,\n  timestamp,\n});\n\nreturn [{ json: { event, signature_valid: true } }];"
+      },
+      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "name": "Validar Assinatura Stripe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Normaliza evento para billing RPC ────────────────────────────────────\nconst event = $input.first().json.event;\nconst type = event.type;\nconst obj = event.data?.object ?? {};\n\nconst SUPPORTED = [\n  'checkout.session.completed',\n  'invoice.paid',\n  'invoice.payment_failed',\n  'customer.subscription.deleted',\n];\n\nif (!SUPPORTED.includes(type)) {\n  console.log('[WF-STRIPE] event_skipped', { event_id: event.id, type });\n  return [{ json: { skip: true, reason: `unsupported_event_type:${type}`, event_id: event.id } }];\n}\n\n// Extrai metadata — pode estar na session, na invoice ou na subscription\nlet metadata = obj.metadata ?? {};\nif (!metadata.recruta_id) {\n  // invoice.paid: metadata fica na subscription\n  const subMeta = obj.subscription?.metadata ?? {};\n  if (subMeta.recruta_id) metadata = subMeta;\n}\n\nconst STATUS_MAP = {\n  'checkout.session.completed': 'paid',\n  'invoice.paid': 'paid',\n  'invoice.payment_failed': 'failed',\n  'customer.subscription.deleted': 'cancelled',\n};\n\nconsole.log('[WF-STRIPE] event_normalized', {\n  event_id: event.id,\n  type,\n  recruta_id: metadata.recruta_id ?? null,\n  correlation_id: metadata.correlation_id ?? null,\n});\n\nreturn [{\n  json: {\n    skip: false,\n    gateway_nome: 'stripe',\n    gateway_event_id: event.id,\n    status_pagamento: STATUS_MAP[type],\n    event_type: type,\n    recruta_id: metadata.recruta_id ?? null,\n    auth_id: metadata.auth_id ?? null,\n    plan_slug: metadata.plan_slug ?? null,\n    correlation_id: metadata.correlation_id ?? null,\n    amount: obj.amount_total ?? obj.amount_paid ?? null,\n    currency: obj.currency ?? null,\n    customer_id: obj.customer ?? null,\n    subscription_id: obj.subscription ?? obj.id ?? null,\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "name": "Normalizar Evento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-skip",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "condition-recruta",
+              "leftValue": "={{ $json.recruta_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "a1b2c3d4-0004-0004-0004-000000000004",
+      "name": "Deve Processar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/rpc_billing_processar_evento_pagamento",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"p_gateway_nome\": \"{{ $json.gateway_nome }}\",\n  \"p_gateway_event_id\": \"{{ $json.gateway_event_id }}\",\n  \"p_status_pagamento\": \"{{ $json.status_pagamento }}\",\n  \"p_recruta_id\": \"{{ $json.recruta_id }}\",\n  \"p_auth_id\": \"{{ $json.auth_id }}\",\n  \"p_plan_slug\": \"{{ $json.plan_slug }}\",\n  \"p_correlation_id\": \"{{ $json.correlation_id }}\",\n  \"p_amount\": {{ $json.amount }},\n  \"p_currency\": \"{{ $json.currency }}\",\n  \"p_customer_id\": \"{{ $json.customer_id }}\",\n  \"p_subscription_id\": \"{{ $json.subscription_id }}\",\n  \"p_raw_event_type\": \"{{ $json.event_type }}\"\n}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0005-0005-0005-000000000005",
+      "name": "RPC Billing Processar Evento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ received: true, event_id: $('Normalizar Evento').item.json.gateway_event_id }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "a1b2c3d4-0006-0006-0006-000000000006",
+      "name": "Responder 200 - Processado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1340, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ received: true, skipped: true, reason: $json.reason }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "a1b2c3d4-0007-0007-0007-000000000007",
+      "name": "Responder 200 - Ignorado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 400]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Stripe Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validar Assinatura Stripe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Assinatura Stripe": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Evento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Evento": {
+      "main": [
+        [
+          {
+            "node": "Deve Processar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deve Processar?": {
+      "main": [
+        [
+          {
+            "node": "RPC Billing Processar Evento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder 200 - Ignorado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RPC Billing Processar Evento": {
+      "main": [
+        [
+          {
+            "node": "Responder 200 - Processado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true
+  },
+  "versionId": "a1b2c3d4-0000-0000-0000-deci02stripe1",
+  "id": "WF-STRIPE-WEBHOOK",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "description": "Recebe webhooks da Stripe, valida assinatura, normaliza evento e chama rpc_billing_processar_evento_pagamento no Supabase. Não decide acesso — apenas repassa fatos de pagamento ao banco."
+  },
+  "tags": [
+    { "name": "billing" },
+    { "name": "stripe" },
+    { "name": "webhook" }
+  ]
+}

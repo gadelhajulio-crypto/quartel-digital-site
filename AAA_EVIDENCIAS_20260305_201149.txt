@@ -1,0 +1,875 @@
+﻿AAA RAW EVIDENCE
+Generated: 2026-03-05T20:11:50.0078832-03:00
+PWD: C:\Projetos\quartel-digital-mobile
+
+
+========================================
+H1.1 - Routes inventory
+========================================
+
+FullName                                                                          
+--------                                                                          
+C:\Projetos\quartel-digital-mobile\app\(auth)                                     
+C:\Projetos\quartel-digital-mobile\app\(stack)                                    
+C:\Projetos\quartel-digital-mobile\app\(tabs)                                     
+C:\Projetos\quartel-digital-mobile\app\_layout.tsx                                
+C:\Projetos\quartel-digital-mobile\app\(auth)\inactive.tsx                        
+C:\Projetos\quartel-digital-mobile\app\(auth)\intro.tsx                           
+C:\Projetos\quartel-digital-mobile\app\(auth)\locked.tsx                          
+C:\Projetos\quartel-digital-mobile\app\(auth)\login.tsx                           
+C:\Projetos\quartel-digital-mobile\app\(auth)\mfa.tsx                             
+C:\Projetos\quartel-digital-mobile\app\(auth)\password-expired.tsx                
+C:\Projetos\quartel-digital-mobile\app\(stack)\bell                               
+C:\Projetos\quartel-digital-mobile\app\(stack)\instructor                         
+C:\Projetos\quartel-digital-mobile\app\(stack)\lesson                             
+C:\Projetos\quartel-digital-mobile\app\(stack)\medals                             
+C:\Projetos\quartel-digital-mobile\app\(stack)\mission                            
+C:\Projetos\quartel-digital-mobile\app\(stack)\module                             
+C:\Projetos\quartel-digital-mobile\app\(stack)\notices                            
+C:\Projetos\quartel-digital-mobile\app\(stack)\onboarding                         
+C:\Projetos\quartel-digital-mobile\app\(stack)\review                             
+C:\Projetos\quartel-digital-mobile\app\(stack)\reviews                            
+C:\Projetos\quartel-digital-mobile\app\(stack)\continue.tsx                       
+C:\Projetos\quartel-digital-mobile\app\(stack)\lessons_list.tsx                   
+C:\Projetos\quartel-digital-mobile\app\(stack)\_layout.tsx                        
+C:\Projetos\quartel-digital-mobile\app\(stack)\bell\index.tsx                     
+C:\Projetos\quartel-digital-mobile\app\(stack)\instructor\index.tsx               
+C:\Projetos\quartel-digital-mobile\app\(stack)\instructor\select.tsx              
+C:\Projetos\quartel-digital-mobile\app\(stack)\lesson\[id].tsx                    
+C:\Projetos\quartel-digital-mobile\app\(stack)\medals\index.tsx                   
+C:\Projetos\quartel-digital-mobile\app\(stack)\mission\concluida.tsx              
+C:\Projetos\quartel-digital-mobile\app\(stack)\module\[id].tsx                    
+C:\Projetos\quartel-digital-mobile\app\(stack)\notices\index.tsx                  
+C:\Projetos\quartel-digital-mobile\app\(stack)\onboarding\index.tsx               
+C:\Projetos\quartel-digital-mobile\app\(stack)\onboarding\instructor-confirm.tsx  
+C:\Projetos\quartel-digital-mobile\app\(stack)\onboarding\instructor-confirmed.tsx
+C:\Projetos\quartel-digital-mobile\app\(stack)\onboarding\instructor-select.tsx   
+C:\Projetos\quartel-digital-mobile\app\(stack)\onboarding\_layout.tsx             
+C:\Projetos\quartel-digital-mobile\app\(stack)\review\[id].tsx                    
+C:\Projetos\quartel-digital-mobile\app\(stack)\reviews\index.tsx                  
+C:\Projetos\quartel-digital-mobile\app\(tabs)\champion.tsx                        
+C:\Projetos\quartel-digital-mobile\app\(tabs)\chat.tsx                            
+C:\Projetos\quartel-digital-mobile\app\(tabs)\history.tsx                         
+C:\Projetos\quartel-digital-mobile\app\(tabs)\index.tsx                           
+C:\Projetos\quartel-digital-mobile\app\(tabs)\messages.tsx                        
+C:\Projetos\quartel-digital-mobile\app\(tabs)\modules.tsx                         
+C:\Projetos\quartel-digital-mobile\app\(tabs)\notices.tsx                         
+C:\Projetos\quartel-digital-mobile\app\(tabs)\profile.tsx                         
+C:\Projetos\quartel-digital-mobile\app\(tabs)\progress.tsx                        
+C:\Projetos\quartel-digital-mobile\app\(tabs)\ranking.tsx                         
+C:\Projetos\quartel-digital-mobile\app\(tabs)\reviews.tsx                         
+C:\Projetos\quartel-digital-mobile\app\(tabs)\settings.tsx                        
+C:\Projetos\quartel-digital-mobile\app\(tabs)\_layout.tsx                         
+
+
+
+
+========================================
+H1.2 - Critical files
+========================================
+
+========================================
+FILE - app/_layout.tsx
+========================================
+import { Slot, useRouter, useSegments } from 'expo-router';
+import { useEffect } from 'react';
+import { AuthProvider, useAuth } from '../src/context/AuthContext';
+import { ForceThemeProvider } from '../src/context/ForceThemeContext';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
+import { InstitutionalEventProvider } from '../src/context/InstitutionalEventContext';
+import { InstitutionalEventRenderer } from '../src/components/events/InstitutionalEventRenderer';
+
+function RootLayoutNav() {
+  const { authStatus, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+
+    switch (authStatus) {
+      case "authenticated":
+        router.replace("/(tabs)");
+        break;
+      case "requires_mfa":
+        router.replace("/(auth)/mfa");
+        break;
+      case "account_locked":
+        router.replace("/(auth)/locked");
+        break;
+      case "inactive_user":
+        router.replace("/(auth)/inactive");
+        break;
+      case "password_expired":
+        router.replace("/(auth)/password-expired");
+        break;
+      case "unauthenticated":
+        router.replace("/(auth)/login");
+        break;
+    }
+  }, [authStatus, loading]);
+
+  return <Slot />;
+}
+
+export default function RootLayout() {
+  return (
+    <ErrorBoundary>
+      <AuthProvider>
+        <ForceThemeProvider>
+          <InstitutionalEventProvider>
+            <RootLayoutNav />
+            <InstitutionalEventRenderer />
+          </InstitutionalEventProvider>
+        </ForceThemeProvider>
+      </AuthProvider>
+    </ErrorBoundary>
+  );
+}
+
+
+========================================
+FILE - src/app/_layout.tsx
+========================================
+NOT FOUND
+
+========================================
+FILE - src/context/AuthContext.tsx
+========================================
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import { Session, User } from '@supabase/supabase-js';
+import { AuthStatus, SessionRevokedReason } from '../types/auth';
+import { supabase } from '../lib/supabase';
+
+// 🔐 TIPOS
+interface AuthContextType {
+  loginBannerReason: SessionRevokedReason | null;
+  authStatus: AuthStatus;
+  authSession: any | null;
+  session: Session | null;
+  user: User | null;
+  profile: Profile | null;
+  loading: boolean;
+  profileLoading: boolean;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  refetchProfile: () => Promise<void>;
+}
+
+export type Profile = {
+  id: string;
+  nome: string;
+  patente: string;
+  forca: 'marinha' | 'exercito' | 'aeronautica';
+  nivel_atual: number;
+  xp: number;
+  avatar_url?: string;
+  instructor_profile_id?: 'objetivo' | 'estrategico' | 'didatico' | null;
+  tipo_acesso: 'degustacao' | 'completo';
+  ativo: boolean;
+};
+
+// 🏗️ CRIAÇÃO DO CONTEXTO
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// 🎯 PROVIDER
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [loginBannerReason, setLoginBannerReason] = useState<SessionRevokedReason | null>(null);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
+  const [authSession, setAuthSession] = useState<any | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+
+  async function fetchInstitutionalAuth() {
+    // Detectar versão do contrato (Fail-safe: RCC < 0.3)
+    let isV3 = false;
+    try {
+      const { data: configData, error: configError } = await supabase
+        .from('v_auth_app_config')
+        .select('config_value')
+        .eq('config_key', 'auth_contract_version')
+        .single();
+
+      if (!configError && configData?.config_value) {
+        const match = configData.config_value.match(/RCC-([\d.]+)/);
+        if (match && match[1]) {
+          const versionNumber = parseFloat(match[1]);
+          if (versionNumber >= 0.3) {
+            isV3 = true;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[AUTH] Falha ao ler contract version, fallback para v0.2');
+    }
+
+    const { data, error } = await supabase
+      .from("v_auth_session")
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      setAuthStatus("unauthenticated");
+      return;
+    }
+
+    setAuthSession(data);
+
+    // Fail-safe and Banner Logic for v0.3
+    if (isV3) {
+      const rawReason = data.session_revoked_reason;
+      let reason: SessionRevokedReason = "none";
+      if (rawReason === "security_logout" || rawReason === "session_expired" || rawReason === "user_action") {
+        reason = rawReason as SessionRevokedReason;
+      }
+
+      if (reason === "security_logout" || reason === "session_expired") {
+        setLoginBannerReason(reason);
+      } else {
+        setLoginBannerReason(null);
+      }
+    } else {
+      setLoginBannerReason(null);
+    }
+
+    if (data.inactive_user) {
+      setAuthStatus("inactive_user");
+      return;
+    }
+
+    if (data.account_locked) {
+      setAuthStatus("account_locked");
+      return;
+    }
+
+    if (data.password_expired) {
+      setAuthStatus("password_expired");
+      return;
+    }
+
+    if (data.requires_mfa) {
+      setAuthStatus("requires_mfa");
+      return;
+    }
+
+    setAuthStatus("authenticated");
+  }
+
+  // Hardening 3 - Limpar banner on any state other than unauthenticated
+  useEffect(() => {
+    if (authStatus !== "unauthenticated") {
+      setLoginBannerReason(null);
+    }
+  }, [authStatus]);
+
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  // Ref para garantir que o profile carregado corresponde à sessão atual (Race Condition Lock)
+  const sessionRef = useRef<string | null>(null);
+
+  // 🔄 CARREGAR PERFIL (Centralizado e Seguro)
+  async function loadProfile(userId: string) {
+    try {
+      // 🔒 Verifica se o usuário ainda é o mesmo da solicitação
+      if (sessionRef.current !== userId) return;
+
+      setProfileLoading(true);
+      // 🚀 source of truth: table 'recrutas'
+      const { data, error } = await supabase
+        .from('recrutas')
+        .select('*')
+        .eq('auth_id', userId)
+        .single();
+
+      // 🔒 Verifica novamente antes de setar estado
+      if (sessionRef.current !== userId) return;
+
+      if (error) {
+        console.error('[AUTH] Error loading profile from recrutas:', error);
+        // Fallback or Error State? For now, we allow generic profile or null.
+        // In production, we might want to retry or block. 
+        // Keeping null signals "No Profile" -> Onboarding might trigger.
+      } else {
+        setProfile(data);
+      }
+    } catch (e) {
+      console.error('[AUTH] Exception loading profile:', e);
+    } finally {
+      if (sessionRef.current === userId) {
+        setProfileLoading(false);
+      }
+    }
+  }
+
+  // 🔄 INICIALIZAÇÃO E LISTENER (Unified Flow)
+  useEffect(() => {
+    let mounted = true;
+
+    async function initialize() {
+      try {
+        // 1. Boot: Obter sessão inicial
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+
+        if (!initialSession) {
+          if (mounted) {
+            setAuthStatus("unauthenticated");
+            setLoading(false);
+          }
+        } else {
+          if (mounted) {
+            sessionRef.current = initialSession.user.id;
+            setSession(initialSession);
+            await loadProfile(initialSession.user.id);
+            await fetchInstitutionalAuth();
+            setLoading(false);
+          }
+        }
+
+        // 2. Listener: Única fonte de verdade para atualizações
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+          if (!mounted) return;
+
+          if (currentSession) {
+            setSession(currentSession);
+
+            // Se o usuário mudou (ou é novo login), carrega perfil
+            if (sessionRef.current !== currentSession.user.id) {
+              sessionRef.current = currentSession.user.id;
+              setProfile(null); // Limpa perfil anterior para evitar vazamento
+              setLoading(true); // Opcional: mostrar loading durante troca de perfil
+              await loadProfile(currentSession.user.id);
+              setLoading(false);
+            }
+            await fetchInstitutionalAuth();
+          } else {
+            // Logout Clean
+            sessionRef.current = null;
+            setSession(null);
+            setProfile(null);
+            setAuthStatus("unauthenticated");
+            setAuthSession(null);
+            // Non-destructive: we don't force banner here unless caused by redirect, but logout is user_action usually.
+            // If it's a backend token revoke, the fetchInstitutionalAuth will handle the banner state.
+            setLoading(false);
+          }
+        });
+
+        return () => {
+          subscription.unsubscribe();
+        };
+
+      } catch (err) {
+        console.error('[AUTH] Init failed:', err);
+        if (mounted) setLoading(false);
+      }
+    }
+
+    initialize();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // 🔑 FUNÇÃO DE LOGIN (State-less, deixa o listener agir)
+  const signIn = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  };
+
+  // 🚪 FUNÇÃO DE LOGOUT (Clean State Immediately)
+  const signOut = async () => {
+    // 1. Limpa estado local IMEDIATAMENTE e desvincula a referência
+    // Isso garante que a UI reaja instantaneamente antes do Supabase processar
+    sessionRef.current = null;
+    setSession(null);
+    setProfile(null);
+    setAuthStatus("unauthenticated");
+    setAuthSession(null);
+    setLoading(false); // Garante que loading pare se estiver rodando
+    setProfileLoading(false); // Reset profile loading state
+
+    // 2. Chama Supabase para limpar no backend/storage
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+  };
+
+  const refetchProfile = async () => {
+    if (session?.user) await loadProfile(session.user.id);
+  };
+
+
+  // NOTE:
+  // signUp is intentionally NOT exposed here.
+  // User creation is handled by a controlled onboarding / backend flow
+  // to preserve institutional governance and avoid uncontrolled account creation.
+
+
+  const value: AuthContextType = {
+    loginBannerReason,
+    authStatus,
+    authSession,
+    session,
+    user: session?.user ?? null,
+    profile,
+    loading,
+    profileLoading,
+    signIn,
+    signOut,
+    refetchProfile
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+// 🪝 HOOK
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth deve ser usado dentro de um AuthProvider');
+  }
+  return context;
+}
+
+========================================
+FILE - context/AuthContext.tsx
+========================================
+NOT FOUND
+
+========================================
+FILE - src/types/auth.ts
+========================================
+export type AuthStatus =
+    | "loading"
+    | "unauthenticated"
+    | "authenticated"
+    | "requires_mfa"
+    | "account_locked"
+    | "inactive_user"
+    | "password_expired";
+
+export type SessionRevokedReason =
+    | "none"
+    | "user_action"
+    | "session_expired"
+    | "security_logout";
+
+
+========================================
+FILE - src/screens/LoginScreen.tsx
+========================================
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { colors } from '../theme';
+import { useAuth } from '../context/AuthContext'; // ⭐ MUDANÇA CRÍTICA
+
+export default function LoginScreen() {
+  const router = useRouter();
+  const { signIn, signOut, loginBannerReason } = useAuth(); // ⭐ USA O MÉTODO DO CONTEXT E BANNER
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleLogin = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      // ⭐ USA O signIn DO CONTEXT (não do authService)
+      await signIn(email, password);
+      console.log('[LOGIN] ✅ Login bem-sucedido! Aguardando redirecionamento automático...');
+      // O AuthContext + _layout.tsx vão cuidar do redirecionamento
+
+    } catch (err: any) {
+      console.error('[LOGIN] ❌ Erro:', err.message);
+      setError(err.message || 'Erro ao entrar.');
+      Alert.alert('Erro no Login', err.message || 'Verifique suas credenciais.');
+    } finally {
+      // GARANTIA DE SAÍDA DE LOOK DE LOADING
+      // Mesmo em sucesso, liberamos o botão. O redirect acontece via Context Listener.
+      setLoading(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.container}>
+            {/* HEADER */}
+            <View style={styles.header}>
+              <Image
+                source={require('../../assets/logorecrutapadrao.png')}
+                style={styles.logo}
+              />
+            </View>
+
+            {/* BANNER INSTITUCIONAL */}
+            {loginBannerReason === 'security_logout' && (
+              <View style={[styles.banner, { backgroundColor: colors.error + '20', borderColor: colors.error }]}>
+                <Ionicons name="warning-outline" size={20} color={colors.error} />
+                <Text style={[styles.bannerText, { color: colors.error }]}>
+                  Sua sessão foi encerrada porque sua conta foi acessada em outro dispositivo.
+                </Text>
+              </View>
+            )}
+
+            {loginBannerReason === 'session_expired' && (
+              <View style={[styles.banner, { backgroundColor: colors.warning + '20', borderColor: colors.warning }]}>
+                <Ionicons name="time-outline" size={20} color={colors.warning} />
+                <Text style={[styles.bannerText, { color: colors.warning }]}>
+                  Sessão expirada. Faça login novamente.
+                </Text>
+              </View>
+            )}
+
+            {/* CARD LOGIN */}
+            <View style={styles.card}>
+              <Text style={styles.title}>Acesso Restrito</Text>
+              <Text style={styles.subtitle}>
+                Identifique-se para acessar o sistema
+              </Text>
+
+              {/* INPUT EMAIL */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="mail-outline" size={20} color={colors.placeholder} />
+                <TextInput
+                  placeholder="Email ou usuário"
+                  placeholderTextColor={colors.placeholder}
+                  style={styles.input}
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoComplete="email"
+                />
+              </View>
+
+              {/* INPUT SENHA */}
+              <View style={styles.inputWrapper}>
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={20}
+                  color={colors.placeholder}
+                />
+                <TextInput
+                  placeholder="Senha"
+                  placeholderTextColor={colors.placeholder}
+                  style={styles.input}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoComplete="password"
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  <Ionicons
+                    name={showPassword ? "eye-outline" : "eye-off-outline"}
+                    size={20}
+                    color={colors.placeholder}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* LINK SENHA */}
+              <TouchableOpacity
+                style={styles.forgot}
+                onPress={() => {
+                  Alert.alert('Funcionalidade em Breve', 'A recuperação de senha será implementada na próxima etapa.');
+                }}
+              >
+                <Text style={styles.forgotText}>Esqueci minha senha</Text>
+              </TouchableOpacity>
+
+              {/* ERRO */}
+              {error !== '' && <Text style={styles.error}>{error}</Text>}
+
+              {/* BOTÃO */}
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  loading && { backgroundColor: colors.disabled },
+                ]}
+                onPress={handleLogin}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color={colors.background} />
+                ) : (
+                  <Text style={styles.buttonText}>ENTRAR</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* RODAPÉ */}
+            <View style={styles.footer}>
+              <View style={styles.divider} />
+              <TouchableOpacity onPress={() => {
+                Alert.alert('Funcionalidade em Breve', 'O registro será liberado em breve.');
+              }}>
+                <Text style={styles.createAccount}>Criar conta</Text>
+              </TouchableOpacity>
+              <Text style={styles.legal}>
+                Uso restrito • Plataforma institucional
+              </Text>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: 24,
+    justifyContent: 'space-between',
+  },
+  header: {
+    alignItems: 'center',
+    marginTop: 32,
+  },
+  logo: {
+    width: 240,
+    height: 240,
+    resizeMode: 'contain',
+    marginBottom: 12,
+  },
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 24,
+    gap: 16,
+    maxWidth: 420,
+    alignSelf: 'center',
+    width: '100%',
+    elevation: 6,
+  },
+  title: {
+    fontSize: 22,
+    color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    height: 52,
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontSize: 14,
+  },
+  forgot: {
+    alignSelf: 'flex-end',
+  },
+  forgotText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  error: {
+    color: colors.error,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  button: {
+    height: 52,
+    borderRadius: 10,
+    backgroundColor: colors.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  buttonText: {
+    color: colors.background,
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 1,
+  },
+  footer: {
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  divider: {
+    height: 1,
+    width: '60%',
+    backgroundColor: colors.border,
+  },
+  createAccount: {
+    color: colors.textSecondary,
+    fontSize: 14,
+  },
+  legal: {
+    fontSize: 12,
+    color: colors.placeholder,
+  },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 16,
+    gap: 12,
+  },
+  bannerText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+});
+
+========================================
+FILE - app/login.tsx
+========================================
+NOT FOUND
+
+========================================
+FILE - app/(auth)/login.tsx
+========================================
+import LoginScreen from '../../src/screens/LoginScreen';
+
+export default function Login() {
+    return <LoginScreen />;
+}
+
+
+========================================
+FILE - src/app/(auth)/login.tsx
+========================================
+NOT FOUND
+
+========================================
+H1.2 - Scan auth/service/session/storage/interceptor files
+========================================
+
+FullName                                                                                                               
+--------                                                                                                               
+C:\Projetos\quartel-digital-mobile\node_modules\@expo\devcert\dist\certificate-authority.d.ts                          
+C:\Projetos\quartel-digital-mobile\node_modules\@expo\devcert\src\certificate-authority.ts                             
+C:\Projetos\quartel-digital-mobile\node_modules\@expo\prebuild-config\build\plugins\unversioned\expo-apple-authentic...
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\dist\main\lib\local-storage.d.ts                     
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\dist\main\lib\webauthn.d.ts                          
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\dist\main\lib\webauthn.dom.d.ts                      
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\dist\main\lib\webauthn.errors.d.ts                   
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\dist\main\AuthAdminApi.d.ts                          
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\dist\main\AuthClient.d.ts                            
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\dist\module\lib\local-storage.d.ts                   
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\dist\module\lib\webauthn.d.ts                        
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\dist\module\lib\webauthn.dom.d.ts                    
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\dist\module\lib\webauthn.errors.d.ts                 
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\dist\module\AuthAdminApi.d.ts                        
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\dist\module\AuthClient.d.ts                          
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\src\lib\local-storage.ts                             
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\src\lib\webauthn.dom.ts                              
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\src\lib\webauthn.errors.ts                           
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\src\lib\webauthn.ts                                  
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\src\AuthAdminApi.ts                                  
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\auth-js\src\AuthClient.ts                                    
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\storage-js\src\lib\vectors\StorageVectorsClient.ts           
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\storage-js\src\packages\StorageAnalyticsClient.ts            
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\storage-js\src\packages\StorageBucketApi.ts                  
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\storage-js\src\packages\StorageFileApi.ts                    
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\storage-js\src\StorageClient.ts                              
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\supabase-js\src\lib\SupabaseAuthClient.ts                    
+C:\Projetos\quartel-digital-mobile\node_modules\@supabase\supabase-js\src\SupabaseClient.ts                            
+C:\Projetos\quartel-digital-mobile\node_modules\@types\node\web-globals\storage.d.ts                                   
+C:\Projetos\quartel-digital-mobile\node_modules\undici\types\interceptors.d.ts                                         
+C:\Projetos\quartel-digital-mobile\node_modules\undici\types\mock-interceptor.d.ts                                     
+C:\Projetos\quartel-digital-mobile\node_modules\undici-types\cache-interceptor.d.ts                                    
+C:\Projetos\quartel-digital-mobile\node_modules\undici-types\interceptors.d.ts                                         
+C:\Projetos\quartel-digital-mobile\node_modules\undici-types\mock-interceptor.d.ts                                     
+C:\Projetos\quartel-digital-mobile\src\context\AuthContext.tsx                                                         
+C:\Projetos\quartel-digital-mobile\src\lib\supabase.ts                                                                 
+C:\Projetos\quartel-digital-mobile\src\services\authService.ts                                                         
+C:\Projetos\quartel-digital-mobile\src\types\auth.ts                                                                   
+C:\Projetos\quartel-digital-mobile\_lib\supabase.ts                                                                    
+
+
+
+
+========================================
+H1.3 - Static searches
+========================================
+
+========================================
+SEARCH - if \(session
+========================================
+
+========================================
+SEARCH - session \&\&
+========================================
+
+========================================
+SEARCH - router\.replace
+========================================
+
+========================================
+SEARCH - requires_mfa
+========================================
+
+========================================
+SEARCH - signOut
+========================================
+
+========================================
+SEARCH - authStatus
+========================================
+
+========================================
+SEARCH - isAuthenticated
+========================================
+
+========================================
+SEARCH - session_revoked_reason
+========================================
+
+========================================
+SEARCH - v_auth_session
+========================================
+
+========================================
+END
+========================================

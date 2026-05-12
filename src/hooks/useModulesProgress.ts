@@ -3,10 +3,10 @@ import { supabase } from '../lib/supabase';
 
 export interface ModuleProgress {
     module_id: string;
-    module_name: string;
+    module_title: string;
     total_lessons: number;
     completed_lessons: number;
-    progress_percent: number;
+    progress_percentage: number;
 }
 
 export function useModulesProgress() {
@@ -19,21 +19,25 @@ export function useModulesProgress() {
         async function loadModules() {
             setLoading(true);
 
-            const { data, error } = await supabase
-                .from('v_modules_progress') // view pronta no backend
-                .select('*')
-                .order('module_order');
+            try {
+                // Using the CORRECT view: vw_recruta_module_progress_v2
+                const { data, error } = await supabase
+                    .from('vw_recruta_module_progress_v2')
+                    .select('*');
 
-            if (!active) return;
+                if (!active) return;
 
-            if (error) {
-                console.error('[MODULES] Erro ao carregar módulos:', error);
-                setModules([]);
-            } else {
-                setModules(data ?? []);
+                if (error) {
+                    throw error;
+                } else {
+                    setModules(data as any[] ?? []);
+                }
+            } catch (err) {
+                console.error('[MODULES] Erro ao carregar módulos (Silencioso):', err);
+                if (active) setModules([]);
+            } finally {
+                if (active) setLoading(false);
             }
-
-            setLoading(false);
         }
 
         loadModules();

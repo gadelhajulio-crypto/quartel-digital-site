@@ -1,75 +1,71 @@
-import React from 'react';
-import { TouchableOpacity, StyleSheet, Image, View } from 'react-native';
+// RCC-0.5 / Wave 1 — InstructorButton backend-driven
+// Avatar e dados vêm de v_instrutores_app via useInstructors().
+// Nenhum hardcode de nome, imagem ou descrição.
+
+import React, { useState } from 'react';
 import { useRouter } from 'expo-router';
-import { useBottomBarState } from '../../hooks/useBottomBarState';
-import { useForceTheme } from '../../context/ForceThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { INSTRUCTOR_AVATARS } from '../../constants/instructorAvatars';
+import { useInstructors } from '../../hooks/useInstructors';
+import { FORCE_GLOW, DEFAULT_GLOW } from '../../constants/instructors';
+import { InstructorAvatar } from './InstructorAvatar';
+import { InstructorSheet } from './InstructorSheet';
 
 export default function InstructorButton() {
-    const router = useRouter();
-    const { isInstructor } = useBottomBarState();
-    const { theme } = useForceTheme();
-    const { profile } = useAuth();
+  const router = useRouter();
+  const { profile } = useAuth();
+  const { instructors } = useInstructors();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-    // Fallback seguro se não tiver instrutor ou asset não encontrado
-    const avatarSource = INSTRUCTOR_AVATARS[profile?.instructor_profile_id as keyof typeof INSTRUCTOR_AVATARS] || INSTRUCTOR_AVATARS.objetivo;
+  const forca = profile?.forca ?? 'marinha';
+  const glowColor = FORCE_GLOW[forca] ?? DEFAULT_GLOW;
+  const hasInstructor = !!profile?.instructor_profile_id;
 
-    if (!profile?.instructor_profile_id) return null; // Não renderiza sem instrutor selecionado (regra de UI)
+  // Encontrar instrutor atual pelo codigo (objetivo / estrategico / didatico)
+  const currentInstructor =
+    instructors.find((i) => i.codigo === profile?.instructor_profile_id) ?? null;
 
-    return (
-        <TouchableOpacity
-            style={[
-                styles.button,
-                {
-                    backgroundColor: theme.card, // Fundo neutro para a imagem
-                    elevation: isInstructor ? 8 : 4,
-                    borderWidth: 2,
-                    borderColor: theme.accent, // Borda na cor da força
-                    zIndex: 10,
-                },
-            ]}
-            onPress={() => router.push('/chat')}
-            activeOpacity={0.85}
-        >
-            <Image
-                source={avatarSource}
-                style={styles.avatar}
-                resizeMode="cover"
-            />
-            {/* Indicador Online */}
-            <View style={[styles.onlineIndicator, { borderColor: theme.card }]} />
-        </TouchableOpacity>
-    );
-}
+  // Source do avatar: URI do backend ou placeholder local
+  const avatarSource = currentInstructor?.avatar_url
+    ? { uri: currentInstructor.avatar_url }
+    : require('../../../assets/instructors/avatars/ramos-avatar-circle.png');
 
-const styles = StyleSheet.create({
-    button: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginTop: -24, // Lift it up
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-        position: 'relative', // Para o indicador absoluto
-    },
-    avatar: {
-        width: '100%',
-        height: '100%',
-        borderRadius: 32,
-    },
-    onlineIndicator: {
-        position: 'absolute',
-        bottom: 2,
-        right: 2,
-        width: 14,
-        height: 14,
-        borderRadius: 7,
-        backgroundColor: '#4ADE80', // Green-400
-        borderWidth: 2,
+  function handleAvatarPress() {
+    if (!hasInstructor) {
+      router.push('/(stack)/instructor/select' as any);
+      return;
     }
-});
+    setSheetOpen(true);
+  }
+
+  function handleChatPress() {
+    setSheetOpen(false);
+    setTimeout(() => router.push('/(tabs)/chat'), 240);
+  }
+
+  function handleChangePress() {
+    setSheetOpen(false);
+    setTimeout(() => router.push('/(stack)/instructor/select' as any), 240);
+  }
+
+  return (
+    <>
+      <InstructorAvatar
+        avatarSource={avatarSource}
+        glowColor={glowColor}
+        onPress={handleAvatarPress}
+        active={sheetOpen}
+      />
+
+      {currentInstructor && (
+        <InstructorSheet
+          visible={sheetOpen}
+          instructor={currentInstructor}
+          glowColor={glowColor}
+          onDismiss={() => setSheetOpen(false)}
+          onChatPress={handleChatPress}
+          onChangePress={handleChangePress}
+        />
+      )}
+    </>
+  );
+}

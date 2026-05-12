@@ -20,7 +20,6 @@ type Recruta = {
   forca: "marinha" | "exercito" | "aeronautica";
   patente: string;
   xp: number;
-  status: string;
 };
 
 export default function PainelScreen({ recrutaId }: Props) {
@@ -33,8 +32,8 @@ export default function PainelScreen({ recrutaId }: Props) {
       setLoading(true);
 
       const { data, error } = await supabase
-        .from("recrutas")
-        .select("nome, forca, patente, xp, status")
+        .from("v_identidade_recruta")
+        .select("nome, forca, patente, xp")
         .eq("auth_id", recrutaId)
         .single();
 

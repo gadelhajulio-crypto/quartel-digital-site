@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
     },
     status: {
         fontSize: 12,
-        color: theme.colors.matteBlack,
+        color: theme.colors.textSecondary,
         fontWeight: 'bold',
         marginTop: 4,
     },

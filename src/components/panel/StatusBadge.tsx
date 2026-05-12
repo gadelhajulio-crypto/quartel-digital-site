@@ -6,8 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 export function StatusBadge({ isChampion }: { isChampion: boolean }) {
     return (
         <View style={[styles.badge, isChampion ? styles.champion : styles.progress]}>
-            {isChampion && <Ionicons name="trophy" size={16} color="#000" style={{ marginRight: 6 }} />}
-            <Text style={[styles.text, isChampion && { color: '#000' }]}>
+            {isChampion && <Ionicons name="trophy" size={16} color={theme.colors.background} style={{ marginRight: 6 }} />}
+            <Text style={[styles.text, isChampion && { color: theme.colors.background }]}>
                 {isChampion ? 'Campeão Mensal' : 'Em Progresso'}
             </Text>
         </View>

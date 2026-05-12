@@ -16,19 +16,31 @@ export function useStudentHistory() {
     async function loadHistory() {
         setLoading(true);
 
-        const { data, error } = await supabase
-            .from('v_student_history')
-            .select('*')
-            .order('created_at', { ascending: false });
+        try {
+            // v_historico_atividade_recruta_v3 é a view READ-ONLY canônica para histórico.
+            // v_audit_eventos é writeable view com trigger — não consumir para leitura.
+            const { data, error } = await supabase
+                .from('v_historico_atividade_recruta_v3')
+                .select('*')
+                .order('created_at', { ascending: false });
 
-        if (error) {
-            console.error('[HISTORICO] Erro ao carregar histórico:', error);
+            if (error) throw error;
+
+            // Campos da view correspondem diretamente ao tipo StudentHistoryItem
+            const mapped = (data ?? []).map((item: any) => ({
+                history_id: item.id || Math.random().toString(),
+                event_type: item.event_type || 'system',
+                title: item.title || 'Evento',
+                description: item.description || '',
+                created_at: item.created_at
+            }));
+            setHistory(mapped);
+        } catch (err) {
+            console.error('[HISTORICO] Erro ao carregar histórico (Silencioso):', err);
             setHistory([]);
-        } else {
-            setHistory(data ?? []);
+        } finally {
+            setLoading(false);
         }
-
-        setLoading(false);
     }
 
     useEffect(() => {

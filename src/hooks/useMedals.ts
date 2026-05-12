@@ -20,7 +20,7 @@ export function useMedals() {
             setLoading(true);
 
             const { data, error } = await supabase
-                .from('v_medals_status')
+                .from('v_medals_status_v3')
                 .select('*')
                 .order('name');
 

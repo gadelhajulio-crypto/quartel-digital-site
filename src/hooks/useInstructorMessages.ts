@@ -33,9 +33,8 @@ export function useInstructorMessages() {
     }
 
     async function markAsRead(messageId: string) {
-        await supabase
-            .from('instructor_message_reads')
-            .insert({ message_id: messageId });
+        // rpc_mark_instructor_message_read: idempotente via ON CONFLICT DO NOTHING no banco
+        await supabase.rpc('rpc_mark_instructor_message_read', { p_message_id: messageId });
 
         setMessages((prev) =>
             prev.map((m) =>

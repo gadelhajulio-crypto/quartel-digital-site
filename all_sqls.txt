@@ -1,0 +1,1815 @@
+﻿-- Function to check if the current user has access to all modules
+-- Returns true if the user's account (created_at) is older than 7 days
+create or replace function check_total_release()
+returns boolean
+language plpgsql
+security definer -- Runs with the privileges of the creator
+as $$
+declare
+  is_released boolean;
+begin
+  select (created_at < (now() - interval '7 days'))
+  into is_released
+  from recrutas
+  where id = auth.uid(); -- Assumes 'id' in 'recrutas' is linked to auth.users
+
+  -- If user not found or created_at is null, default to false
+  return coalesce(is_released, false);
+end;
+$$;
+-- FunÃ§Ã£o para verificar liberaÃ§Ã£o total e inserir mÃ³dulos
+-- Deve ser chamada via Cron ou Edge Function diariamente
+create or replace function verificar_liberacao_total()
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  -- Inserir registros na tabela 'recruta_modulos' para usuÃ¡rios que jÃ¡ completaram 7 dias
+  -- LÃ³gica: Se o recruta tem > 7 dias, garantimos que ele tenha acesso a mÃ³dulos especÃ­ficos (simulado aqui como modulo_id 1, 2, 3)
+  
+  -- Exemplo: Liberar MÃ³dulo 2 (IntermediÃ¡rio) e 3 (AvanÃ§ado) para quem tem > 7 dias
+  -- E que AINDA NÃƒO tenha esses mÃ³dulos liberados.
+
+  insert into recruta_modulos (recruta_id, modulo_id, status, data_liberacao)
+  select r.id, m.id, 'liberado', now()
+  from recrutas r
+  cross join modulos m
+  where r.created_at < (now() - interval '7 days')
+  and m.id in ('modulo_2_id', 'modulo_3_id') -- IDs de exemplo, substituir pelos reais
+  and not exists (
+    select 1 from recruta_modulos rm 
+    where rm.recruta_id = r.id 
+    and rm.modulo_id = m.id
+  );
+  
+end;
+$$;
+-- Create XP Events table
+CREATE TABLE IF NOT EXISTS public.xp_eventos (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) NOT NULL,
+    amount INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    source_id TEXT, -- e.g., lesson_id
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Add xp_total to recruited (if not exists, assuming 'recrutas' or 'profiles' table exists, 
+-- but based on previous context we might need to rely on the user having a table. 
+-- Checking previous logs/files, we saw references to 'recrutas'.
+-- Safely adding column if it doesn't exist.
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'recrutas' AND column_name = 'xp_total') THEN
+        ALTER TABLE public.recrutas ADD COLUMN xp_total INTEGER DEFAULT 0;
+    END IF;
+END $$;
+
+-- RPC to register XP
+CREATE OR REPLACE FUNCTION public.registrar_xp(
+    p_amount INTEGER,
+    p_description TEXT,
+    p_source_id TEXT
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id UUID;
+    v_new_total INTEGER;
+BEGIN
+    v_user_id := auth.uid();
+    
+    -- Insert Event
+    INSERT INTO public.xp_eventos (user_id, amount, description, source_id)
+    VALUES (v_user_id, p_amount, p_description, p_source_id);
+    
+    -- Update Total
+    UPDATE public.recrutas
+    SET xp_total = COALESCE(xp_total, 0) + p_amount
+    WHERE id = v_user_id
+    RETURNING xp_total INTO v_new_total;
+    
+    RETURN v_new_total;
+END;
+$$;
+-- Create Avatar bucket if it doesn't exist
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('avatars', 'avatars', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Policy: Anyone can view avatars
+CREATE POLICY "Avatar images are publicly accessible"
+  ON storage.objects FOR SELECT
+  USING ( bucket_id = 'avatars' );
+
+-- Policy: Users can upload their own avatars
+CREATE POLICY "Users can upload their own avatar"
+  ON storage.objects FOR INSERT
+  WITH CHECK (
+    bucket_id = 'avatars' AND
+    auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- Policy: Users can update their own avatars
+CREATE POLICY "Users can update their own avatar"
+  ON storage.objects FOR UPDATE
+  USING (
+    bucket_id = 'avatars' AND
+    auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- Add avatar_url to recrutas table if not exists
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'recrutas' AND column_name = 'avatar_url') THEN
+        ALTER TABLE public.recrutas ADD COLUMN avatar_url TEXT;
+    END IF;
+END $$;
+-- ==============================================================================
+-- CARGA DE DADOS ESTRUTURAL FINAL - QUARTEL DIGITAL
+-- ==============================================================================
+-- Este script limpa a base e insere a estrutura completa de mÃ³dulos e aulas.
+-- DATA: 14/01/2026
+---------------------------------------------------------------------------------
+
+-- 1. LIMPEZA TOTAL (RESET)
+-- Remove pontuaÃ§Ãµes, progressos e conteÃºdo antigo para evitar duplicidade.
+DELETE FROM public.xp_eventos;
+DELETE FROM public.recruta_modulos;
+DELETE FROM public.aulas;
+DELETE FROM public.modulos;
+
+-- 2. GARANTIA DE ESTRUTURA (DDL)
+-- Recria tabelas caso nÃ£o existam (SeguranÃ§a).
+
+CREATE TABLE IF NOT EXISTS public.modulos (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    "order" INTEGER NOT NULL,
+    forca TEXT NOT NULL CHECK (forca IN ('navy', 'army', 'airforce')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.aulas (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    module_id UUID NOT NULL REFERENCES public.modulos(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('video', 'pdf', 'quiz')),
+    url TEXT,
+    xp INTEGER DEFAULT 0,
+    "order" INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 3. INSERÃ‡ÃƒO DE CONTEÃšDO (DADOS)
+
+DO $$
+DECLARE
+    v_force text;
+    v_mod0_id uuid;
+    v_mod1_id uuid;
+    v_mod2_id uuid;
+BEGIN
+    -- [LOOP DE FORÃ‡AS]
+    -- Cria a estrutura idÃªntica para Marinha, ExÃ©rcito e AeronÃ¡utica.
+    FOREACH v_force IN ARRAY ARRAY['navy', 'army', 'airforce']
+    LOOP
+        
+        -----------------------------------------------------------------------
+        -- MÃ“DULO 0: BATISMO DE FOGO (DEGUSTAÃ‡ÃƒO)
+        -----------------------------------------------------------------------
+        INSERT INTO public.modulos (title, description, "order", forca)
+        VALUES ('Batismo de Fogo', 'O inÃ­cio da sua jornada. Prove seu valor.', 0, v_force)
+        RETURNING id INTO v_mod0_id;
+
+        -- Aula 0.1 (VÃ­deo)
+        INSERT INTO public.aulas (module_id, title, type, url, xp, "order")
+        VALUES (
+            v_mod0_id, 
+            'ApresentaÃ§Ã£o do Comando', -- TÃ­tulo Militar
+            'video', 
+            'https://vimeo.com/placeholder_aula_01', -- [EDITAR AQUI] Link do VÃ­deo
+            50, -- XP do VÃ­deo
+            1
+        );
+
+        -- Aula 0.2 (PDF)
+        INSERT INTO public.aulas (module_id, title, type, url, xp, "order")
+        VALUES (
+            v_mod0_id, 
+            'CÃ³digo de Honra e Conduta', 
+            'pdf', 
+            'https://example.com/placeholder_manual.pdf', -- [EDITAR AQUI] Link do PDF
+            20, -- XP do PDF
+            2
+        );
+
+        -- Aula 0.3 (VÃ­deo)
+        INSERT INTO public.aulas (module_id, title, type, url, xp, "order")
+        VALUES (
+            v_mod0_id, 
+            'Primeira Ordem do Dia', 
+            'video', 
+            'https://vimeo.com/placeholder_aula_02', 
+            50, 
+            3
+        );
+
+        -----------------------------------------------------------------------
+        -- MÃ“DULO 1: MENTALIDADE DE ELITE
+        -----------------------------------------------------------------------
+        INSERT INTO public.modulos (title, description, "order", forca)
+        VALUES ('Mentalidade de Elite', 'Forje sua mente para a guerra diÃ¡ria.', 1, v_force)
+        RETURNING id INTO v_mod1_id;
+
+        -- Aula 1.1
+        INSERT INTO public.aulas (module_id, title, type, url, xp, "order")
+        VALUES (v_mod1_id, 'Disciplina InabalÃ¡vel', 'video', 'https://vimeo.com/placeholder_aula_03', 50, 1);
+
+        -- Aula 1.2
+        INSERT INTO public.aulas (module_id, title, type, url, xp, "order")
+        VALUES (v_mod1_id, 'Hierarquia e Lealdade', 'pdf', 'https://example.com/placeholder_hierarquia.pdf', 20, 2);
+
+        -----------------------------------------------------------------------
+        -- MÃ“DULO 2: ESTRATÃ‰GIA OPERACIONAL
+        -----------------------------------------------------------------------
+        INSERT INTO public.modulos (title, description, "order", forca)
+        VALUES ('EstratÃ©gia Operacional', 'OrganizaÃ§Ã£o Ã© a chave da vitÃ³ria.', 2, v_force)
+        RETURNING id INTO v_mod2_id;
+
+        -- Aula 2.1
+        INSERT INTO public.aulas (module_id, title, type, url, xp, "order")
+        VALUES (v_mod2_id, 'GestÃ£o do Tempo de Combate', 'video', 'https://vimeo.com/placeholder_aula_04', 50, 1);
+
+    END LOOP;
+END $$;
+
+-- 4. VERIFICAÃ‡ÃƒO FINAL
+-- Exibe quantos registros foram criados para conferÃªncia.
+SELECT 
+    (SELECT count(*) FROM public.modulos) as total_modulos,
+    (SELECT count(*) FROM public.aulas) as total_aulas;
+-- ==============================================================================
+-- BLINDAGEM DE SEGURANÃ‡A (RLS - ROW LEVEL SECURITY)
+-- ==============================================================================
+-- Este script habilita a seguranÃ§a em nÃ­vel de linha para garantir que apenas
+-- usuÃ¡rios autenticados possam ler dados e apenas donos possam editar seus perfis.
+-- DATA: 15/01/2026
+---------------------------------------------------------------------------------
+
+-- 1. MÃ“DULOS E AULAS (LEITURA PÃšBLICA PARA RECRUTAS)
+-- O conteÃºdo Ã© o mesmo para todos, mas apenas usuÃ¡rios logados podem ver.
+
+ALTER TABLE public.modulos ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "MÃ³dulos visÃ­veis para todos os recrutas" 
+ON public.modulos 
+FOR SELECT 
+USING (auth.role() = 'authenticated');
+
+ALTER TABLE public.aulas ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Aulas visÃ­veis para todos os recrutas" 
+ON public.aulas 
+FOR SELECT 
+USING (auth.role() = 'authenticated');
+
+-- 2. RECRUTAS / PERFIL (RANKING E EDICAO)
+-- Todos podem ver o ranking (ler dados bÃ¡sicos uns dos outros), 
+-- mas apenas o dono pode editar seu prÃ³prio perfil.
+
+ALTER TABLE public.recrutas ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Recrutas podem ver ranking" 
+ON public.recrutas 
+FOR SELECT 
+USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Recrutas podem editar apenas seu perfil" 
+ON public.recrutas 
+FOR UPDATE 
+USING (auth.uid() = id);
+
+-- 3. XP EVENTOS (HISTÃ“RICO PESSOAL)
+-- Recrutas sÃ³ veem seu prÃ³prio histÃ³rico. NinguÃ©m insere direto (apenas via RPC).
+
+ALTER TABLE public.xp_eventos ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Recruta vÃª apenas seus eventos" 
+ON public.xp_eventos 
+FOR SELECT 
+USING (auth.uid() = user_id);
+
+-- (Opcional) Permitir Insert apenas se o user_id for o prÃ³prio
+-- Embora a gente use RPC (Security Definer), Ã© uma boa prÃ¡tica.
+CREATE POLICY "Recruta pode inserir eventos para si mesmo" 
+ON public.xp_eventos 
+FOR INSERT 
+WITH CHECK (auth.uid() = user_id);
+create or replace function module_progress(
+  p_recruta_id uuid,
+  p_modulo_id uuid
+)
+returns table (
+  completed bigint,
+  total bigint
+)
+language sql
+stable
+as $$
+  select
+    count(*) filter (where rl.completed_at is not null) as completed,
+    count(*) as total
+  from licoes l
+  left join recruta_licoes rl
+    on rl.licao_id = l.id
+   and rl.recruta_id = p_recruta_id
+  where l.modulo_id = p_modulo_id;
+$$;
+create or replace function recruta_progresso_geral(
+  p_recruta_id uuid
+)
+returns table (
+  completed bigint,
+  total bigint
+)
+language sql
+stable
+as $$
+  select
+    count(*) filter (where rm.completed_at is not null) as completed,
+    count(*) as total
+  from recruta_modulos rm
+  where rm.recruta_id = p_recruta_id;
+$$;
+-- View: Ranking Mensal (Top Recrutas ordered by XP)
+-- Assumes existence of 'recrutas' table with 'id', 'nome', 'xp_total', 'forca'.
+-- If 'xp_total' doesn't exist, we might need to sum 'xp_eventos'. 
+-- For now, relying on the user's implication that data exists. 
+-- We'll try to be robust: if xp_total exists use it, otherwise use a placeholder or sum.
+-- Let's assume 'recrutas' has 'xp_total' as per previous context (XP System).
+
+create or replace view vw_ranking_mensal as
+select
+  row_number() over (order by coalesce(r.xp_total, 0) desc) as posicao,
+  r.id as recruta_id,
+  r.nome,
+  coalesce(r.xp_total, 0) as xp,
+  r.forca
+from recrutas r
+where r.nome is not null; -- Filter out incomplete profiles if needed
+
+-- View: PosiÃ§Ã£o do Recruta no MÃªs
+create or replace view vw_posicao_recruta_mes as
+select
+  posicao,
+  recruta_id,
+  xp
+from vw_ranking_mensal;
+-- Migration: Secure Instructor Selection
+-- Date: 2026-01-18
+-- Reviewer: AntiGravity
+
+-- 1. Ensure the column exists (idempotent check not strictly needed if we know schema, but good practice)
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS instructor_profile_id text;
+
+-- 2. Add Constraint to ensure only valid IDs are saved
+ALTER TABLE profiles
+  DROP CONSTRAINT IF EXISTS check_instructor_profile_id;
+
+ALTER TABLE profiles
+  ADD CONSTRAINT check_instructor_profile_id
+  CHECK (instructor_profile_id IN ('objetivo', 'estrategico', 'didatico'));
+
+-- 3. RLS Policy: Allow users to update THEIR OWN profile
+-- First, ensure RLS is on
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+-- drop existing policy if it conflicts (optional, depending on project style)
+DROP POLICY IF EXISTS "User can update own instructor" ON profiles;
+
+CREATE POLICY "User can update own instructor"
+ON profiles
+FOR UPDATE
+USING (auth.uid() = id)
+WITH CHECK (
+  -- Ensure they are still editing their own profile (redundant but safe)
+  auth.uid() = id
+  -- AND ensure the value is valid (constraint handles this, but Check here prevents bad attempts early)
+  AND instructor_profile_id IN ('objetivo', 'estrategico', 'didatico')
+);
+-- 1. VIEW: LISTAGEM DE AULAS PARA O PAINEL
+create or replace view v_lessons_panel as
+select
+  l.id as lesson_id,
+  l.title as title,
+  l.module as module,
+  l.lesson_order as lesson_order,
+  l.force as force,
+  l.created_at as created_at
+from lessons l;
+
+-- 2. VIEW: DETALHES DA AULA (SEM MÃDIA)
+create or replace view v_lesson_detail_panel as
+select
+  l.id as lesson_id,
+  l.title as title,
+  l.module as module,
+  l.lesson_order as lesson_order,
+  l.force as force
+from lessons l;
+
+-- 3. VIEW: EXISTÃŠNCIA DE MÃDIA (SEM URL)
+-- Filters for strictly Lesson content (Video/PDF), excluding reviews if strictly for lesson panel. 
+-- However, creating a generic view for all media allows app to filter. 
+-- Given the strict breakdown in prompt, I'll allow all types or restrict? 
+-- Prompt 181 implied generic media panel. Prompt 196 puts all in lesson_media.
+-- I will select all types here, allowing the UI to decide what to show based on 'media_type'.
+create or replace view v_lesson_media_panel as
+select
+  lm.lesson_id as lesson_id,
+  lm.type as media_type
+from lesson_media lm;
+
+-- 4. VIEW: PROGRESSO DO ALUNO
+-- FIXED: Using 'lesson_progress' table, NOT 'progresso_aulas'
+create or replace view v_lesson_progress_panel as
+select
+  lp.user_id as user_id,
+  lp.lesson_id as lesson_id,
+  lp.completed_at as completed_at
+from lesson_progress lp;
+
+-- 5. VIEW: EXISTÃŠNCIA DE REVISÃƒO
+-- FIXED: Sourcing from 'lesson_media' where type is review
+create or replace view v_review_panel as
+select
+  lm.lesson_id as lesson_id,
+  lm.type as review_type
+from lesson_media lm
+where lm.type in ('review_video', 'review_audio');
+-- 1. MATERIALIZED VIEW: XP MENSAL DO RECRUTA
+-- Calculates total XP per user per month
+create materialized view mv_xp_mensal_recruta as
+select
+    user_id,
+    force,
+    date_trunc('month', created_at)::date as month_ref,
+    sum(quantidade) as xp_mensal
+from xp_eventos
+group by user_id, force, date_trunc('month', created_at);
+
+create unique index idx_mv_xp_mensal_recruta on mv_xp_mensal_recruta (user_id, force, month_ref);
+
+-- 2. MATERIALIZED VIEW: RANKING MENSAL
+-- Calculates rank position based on XP
+create materialized view mv_ranking_mensal as
+select
+    user_id,
+    force,
+    month_ref,
+    xp_mensal,
+    rank() over (partition by force, month_ref order by xp_mensal desc) as rank_position
+from mv_xp_mensal_recruta;
+
+create unique index idx_mv_ranking_mensal on mv_ranking_mensal (user_id, force, month_ref);
+
+-- 3. MATERIALIZED VIEW: CAMPEÃƒO MENSAL
+-- Identifies the top rank for each force/month
+create materialized view mv_campeao_mensal as
+select
+    user_id,
+    force,
+    month_ref
+from mv_ranking_mensal
+where rank_position = 1;
+
+create unique index idx_mv_campeao_mensal on mv_campeao_mensal (force, month_ref);
+
+-- 4. VIEW: CONTAGEM DE AULAS CONCLUÃDAS
+-- Aggregate view for simple read
+create or replace view v_completed_lessons_count as
+select
+    user_id,
+    count(*) as completed_count
+from lesson_progress
+where completed_at is not null
+group by user_id;
+-- Create Audit Log table for Chat
+CREATE TABLE IF NOT EXISTS public.chat_audit_log (
+    audit_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    session_id UUID, -- Optional, if we want to track app sessions
+    timestamp_utc TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    user_id UUID NOT NULL,
+    recruta_id UUID NOT NULL,
+    force TEXT NOT NULL,
+    instructor_profile_id TEXT,
+    access_mode TEXT NOT NULL,
+    
+    -- Context
+    interaction_type TEXT DEFAULT 'question', -- question, explanation, quiz, etc.
+    response_category TEXT DEFAULT 'answered_within_scope', -- answered_within_scope, blocked, etc.
+    
+    -- Source
+    source TEXT DEFAULT 'mobile_app',
+    agent TEXT, -- e.g. instrutor_marinha
+    
+    -- Metadata (No content)
+    metadata JSONB DEFAULT '{}'::jsonb
+);
+
+-- Indices
+CREATE INDEX IF NOT EXISTS idx_chat_audit_user ON public.chat_audit_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_audit_timestamp ON public.chat_audit_log(timestamp_utc);
+CREATE INDEX IF NOT EXISTS idx_chat_audit_recruta ON public.chat_audit_log(recruta_id);
+
+-- RLS (Security)
+ALTER TABLE public.chat_audit_log ENABLE ROW LEVEL SECURITY;
+
+-- Only service role can insert/select usually, or user can insert their own?
+-- System/Service Role will do the insertion via Edge Function.
+-- Users might want to see their audit log? Probably not.
+-- Keeping it restricted.
+CREATE POLICY "Service Role Full Access" ON public.chat_audit_log
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+-- Support Views for Chat Central
+
+-- 1. VIEW public_recrutas_padrao
+-- Maps 'profiles' to the strict contract required by Chat Central
+CREATE OR REPLACE VIEW public.public_recrutas_padrao AS
+SELECT 
+    p.id AS recruta_id,
+    p.forca,
+    CASE WHEN p.ativo THEN 'ativo' ELSE 'inativo' END AS status,
+    COALESCE(p.instructor_profile_id, 'objetivo') AS instrutor_id,
+    CASE 
+        WHEN p.tipo_acesso = 'completo' THEN 'full' 
+        ELSE 'free' 
+    END AS access_mode,
+    -- Mocking allowed_modules for now, or joining modules/progress if needed.
+    -- Prompt implies this view should solve it. 
+    -- For base implementation, we return empty array or 'all' logic handled by app?
+    -- Chat Central code uses it to filter 'pedagogica'.
+    -- If free -> limited modules?
+    ARRAY[]::text[] AS allowed_modules
+FROM public.profiles p;
+
+-- 2. VIEW v_audit_eventos
+-- Allows Chat Central to insert logs blindly
+CREATE OR REPLACE VIEW public.v_audit_eventos AS
+SELECT 
+    audit_id,
+    session_id,
+    timestamp_utc,
+    recruta_id,
+    source,
+    response_category AS categoria
+FROM public.chat_audit_log;
+
+-- Trigger to handle INSERT on v_audit_eventos
+CREATE OR REPLACE FUNCTION public.fn_insert_audit_evento()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.chat_audit_log (
+        session_id,
+        timestamp_utc,
+        user_id, -- We map recruta_id to user_id (same)
+        recruta_id,
+        source,
+        response_category,
+        -- Defaults for required cols in underlying table if missing in view insert
+        force, 
+        access_mode
+    ) VALUES (
+        NEW.session_id,
+        NEW.timestamp_utc,
+        NEW.recruta_id,
+        NEW.recruta_id,
+        NEW.source,
+        NEW.categoria,
+        'unknown', -- Chat Central logic handles force/access logic internally, 
+                   -- but audit log table expects non-null. 
+                   -- We might need to fetch it or relax constraint in audit table.
+                   -- OR better: Chat Central *calculates* Force/Access. 
+                   -- Ideally Chat Central should write to chat_audit_log directly 
+                   -- if strictly following schema. 
+                   -- BUT user code writes to `v_audit_eventos` with minimal fields.
+                   -- We must support that.
+        'unknown'
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- TRIGGER
+DROP TRIGGER IF EXISTS trg_insert_audit ON public.v_audit_eventos;
+CREATE TRIGGER trg_insert_audit
+    INSTEAD OF INSERT ON public.v_audit_eventos
+    FOR EACH ROW
+    EXECUTE FUNCTION public.fn_insert_audit_evento();
+
+-- NOTE: The underlying chat_audit_log table has NOT NULL on force/access_mode.
+-- We must alter strictness or fetch them in trigger.
+-- Fetching in trigger is best for consistency.
+CREATE OR REPLACE FUNCTION public.fn_insert_audit_evento_smart()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_forca text;
+    v_access text;
+BEGIN
+    SELECT forca, tipo_acesso INTO v_forca, v_access FROM public.profiles WHERE id = NEW.recruta_id;
+    
+    INSERT INTO public.chat_audit_log (
+        session_id,
+        timestamp_utc,
+        user_id,
+        recruta_id,
+        source,
+        response_category,
+        force,
+        access_mode
+    ) VALUES (
+        NEW.session_id,
+        NEW.timestamp_utc,
+        NEW.recruta_id,
+        NEW.recruta_id,
+        NEW.source,
+        NEW.categoria,
+        COALESCE(v_forca, 'unknown'),
+        CASE WHEN v_access='completo' THEN 'full' ELSE 'free' END
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER trg_insert_audit
+    INSTEAD OF INSERT ON public.v_audit_eventos
+    FOR EACH ROW
+    EXECUTE FUNCTION public.fn_insert_audit_evento_smart();
+-- Function to get the OFFICIAL next lesson for a student
+-- Strictly server-side decision making.
+
+CREATE OR REPLACE FUNCTION get_student_next_lesson(p_user_id UUID)
+RETURNS TABLE (
+  lesson_id UUID,
+  title TEXT,
+  module TEXT,
+  lesson_order INTEGER,
+  status TEXT -- 'available' | 'completed' | 'blocked' (future expansion)
+) AS $$
+DECLARE
+  v_force TEXT;
+BEGIN
+  -- 1. Get User Force
+  SELECT forca INTO v_force
+  FROM profiles
+  WHERE id = p_user_id;
+
+  IF v_force IS NULL THEN
+    RETURN; -- No profile/force found
+  END IF;
+
+  -- 2. Find first uncompleted lesson
+  RETURN QUERY
+  SELECT 
+    l.id as lesson_id,
+    l.title,
+    m.title as module,
+    l.lesson_order,
+    'available'::text as status
+  FROM lessons l
+  JOIN modules m ON l.module_id = m.id
+  LEFT JOIN lesson_progress lp ON l.id = lp.lesson_id AND lp.user_id = p_user_id
+  WHERE 
+    l.force = v_force
+    AND lp.completed_at IS NULL
+  ORDER BY 
+    m.module_order ASC,
+    l.lesson_order ASC
+  LIMIT 1;
+  
+  -- If no rows returned (Course Completed), we might want to return the LAST lesson as "completed" or empty.
+  -- For now, the app handles empty as "Completed".
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+-- ==============================================================================
+-- MIGRAÃ‡ÃƒO OFICIAL: CURRÃCULO MARINHA DO BRASIL
+-- ==============================================================================
+-- Implementa a estrutura curricular definitiva (Regulamento, IMN, HPS, etc.)
+-- Remove conteÃºdo legado/genÃ©rico apenas da forÃ§a 'navy'.
+-- DATA: 29/01/2026
+-- ==============================================================================
+
+DO $$
+DECLARE
+    v_mod0_id uuid;
+    v_mod1_id uuid;
+    v_mod2_id uuid;
+    v_mod3_id uuid;
+    v_mod4_id uuid;
+    v_mod5_id uuid;
+    v_mod6_id uuid;
+    v_mod7_id uuid;
+    v_mod8_id uuid;
+    v_mod9_id uuid;
+BEGIN
+    -- 1. LIMPEZA DE DADOS ANTIGOS (SCOPE: NAVY)
+    -- Remove aulas e mÃ³dulos da Marinha para garantir 'fonte Ãºnica da verdade'
+    -- DELETE CASCADE jÃ¡ deve limpar as aulas, mas forÃ§amos por seguranÃ§a se FK permitir.
+    
+    DELETE FROM public.aulas 
+    WHERE module_id IN (SELECT id FROM public.modulos WHERE forca = 'navy');
+
+    DELETE FROM public.modulos 
+    WHERE forca = 'navy';
+
+    -- 2. INSERÃ‡ÃƒO DO CURRÃCULO
+
+    -- ==============================================================================
+    -- MÃ“DULO 0: REGULAMENTO DISCIPLINAR (ORDEM 0)
+    -- ==============================================================================
+    INSERT INTO public.modulos (title, description, "order", forca)
+    VALUES ('Regulamento Disciplinar', 'Fundamentos e normas disciplinares da Marinha.', 0, 'navy')
+    RETURNING id INTO v_mod0_id;
+
+    -- Aulas M0
+    INSERT INTO public.aulas (module_id, title, "order", type, url, xp) VALUES
+    (v_mod0_id, 'Fundamentos do Regulamento Disciplinar para a Marinha (RDM)', 1, 'video', NULL, 100), -- Desbloqueada
+    (v_mod0_id, 'ContravenÃ§Ã£o Disciplinar: Conceito e Rol Normativo', 2, 'video', NULL, 100),       -- Desbloqueada
+    (v_mod0_id, 'Natureza e CircunstÃ¢ncias das ContravenÃ§Ãµes Disciplinares', 3, 'video', NULL, 100),    -- Desbloqueada
+    (v_mod0_id, 'Sistema de Penas Disciplinares', 4, 'video', NULL, 100),
+    (v_mod0_id, 'CompetÃªncia e JurisdiÃ§Ã£o Disciplinar', 5, 'video', NULL, 100),
+    (v_mod0_id, 'Procedimento de ApuraÃ§Ã£o e ImposiÃ§Ã£o da Pena', 6, 'video', NULL, 100),
+    (v_mod0_id, 'Cumprimento e Contagem da Pena', 7, 'video', NULL, 100),
+    (v_mod0_id, 'Registro, TranscriÃ§Ã£o e Efeitos Funcionais', 8, 'video', NULL, 100),
+    (v_mod0_id, 'RevisÃ£o, Relevamento e Cancelamento de PuniÃ§Ãµes', 9, 'video', NULL, 100),
+    (v_mod0_id, 'Parte, PrisÃ£o Imediata e Recursos', 10, 'video', NULL, 100),
+    (v_mod0_id, 'DisposiÃ§Ãµes Gerais e Limites do Regulamento Disciplinar', 11, 'video', NULL, 100);
+
+    -- ==============================================================================
+    -- MÃ“DULO 1: INSTRUÃ‡ÃƒO MILITAR NAVAL (ORDEM 1)
+    -- ==============================================================================
+    INSERT INTO public.modulos (title, description, "order", forca)
+    VALUES ('InstruÃ§Ã£o Militar Naval', 'Normas, cerimonial e ordenanÃ§a da Armada.', 1, 'navy')
+    RETURNING id INTO v_mod1_id;
+
+    INSERT INTO public.aulas (module_id, title, "order", type, url, xp) VALUES
+    (v_mod1_id, 'Estatuto dos Militares', 1, 'video', NULL, 100),
+    (v_mod1_id, 'Regulamento de ContinÃªncia, Honras e Sinais de Respeito e Cerimonial Militar das ForÃ§as Armadas', 2, 'video', NULL, 100),
+    (v_mod1_id, 'Regulamento de Uniformes da Marinha', 3, 'video', NULL, 100),
+    (v_mod1_id, 'Regulamento Disciplinar para a Marinha, CÃ³digo de Processo Penal Militar e CÃ³digo Penal Militar', 4, 'video', NULL, 100),
+    (v_mod1_id, 'OrdenanÃ§a Geral para o ServiÃ§o da Armada', 5, 'video', NULL, 100);
+
+    -- ==============================================================================
+    -- MÃ“DULO 2: HIGIENE E PRIMEIROS SOCORROS (ORDEM 2)
+    -- ==============================================================================
+    INSERT INTO public.modulos (title, description, "order", forca)
+    VALUES ('Higiene e Primeiros Socorros', 'Cuidados bÃ¡sicos de saÃºde e emergÃªncias.', 2, 'navy')
+    RETURNING id INTO v_mod2_id;
+
+    INSERT INTO public.aulas (module_id, title, "order", type, url, xp) VALUES
+    (v_mod2_id, 'Higiene', 1, 'video', NULL, 100),
+    (v_mod2_id, 'PrevenÃ§Ã£o Ã  DependÃªncia QuÃ­mica', 2, 'video', NULL, 100),
+    (v_mod2_id, 'Primeiros Socorros em Hemorragias e Asfixias', 3, 'video', NULL, 100),
+    (v_mod2_id, 'Primeiros Socorros em Choque ElÃ©trico, Queimaduras, IntermaÃ§Ãµes e InsolaÃ§Ãµes', 4, 'video', NULL, 100),
+    (v_mod2_id, 'Primeiros Socorros em Fraturas, Entorses e LuxaÃ§Ãµes', 5, 'video', NULL, 100);
+
+    -- ==============================================================================
+    -- MÃ“DULO 3: NOÃ‡Ã•ES DE ARMAMENTO (ORDEM 3)
+    -- ==============================================================================
+    INSERT INTO public.modulos (title, description, "order", forca)
+    VALUES ('NoÃ§Ãµes de Armamento', 'Conhecimento de armamento leve e muniÃ§Ã£o.', 3, 'navy')
+    RETURNING id INTO v_mod3_id;
+
+    INSERT INTO public.aulas (module_id, title, "order", type, url, xp) VALUES
+    (v_mod3_id, 'Armamento Leve', 1, 'video', NULL, 100),
+    (v_mod3_id, 'MuniÃ§Ã£o Naval', 2, 'video', NULL, 100),
+    (v_mod3_id, 'InstruÃ§Ã£o e Adestramento PreparatÃ³rios para o Tiro', 3, 'video', NULL, 100);
+
+    -- ==============================================================================
+    -- MÃ“DULO 4: NOÃ‡Ã•ES DE COMBATE A INCÃŠNDIO (ORDEM 4)
+    -- ==============================================================================
+    INSERT INTO public.modulos (title, description, "order", forca)
+    VALUES ('NoÃ§Ãµes de Combate a IncÃªndio', 'TÃ©cnicas e equipamentos de combate a incÃªndio a bordo.', 4, 'navy')
+    RETURNING id INTO v_mod4_id;
+
+    INSERT INTO public.aulas (module_id, title, "order", type, url, xp) VALUES
+    (v_mod4_id, 'Combate a IncÃªndio', 1, 'video', NULL, 100),
+    (v_mod4_id, 'ClassificaÃ§Ã£o dos IncÃªndios', 2, 'video', NULL, 100),
+    (v_mod4_id, 'Agentes Extintores', 3, 'video', NULL, 100),
+    (v_mod4_id, 'Equipamentos e AcessÃ³rios', 4, 'video', NULL, 100),
+    (v_mod4_id, 'Equipamento de ProteÃ§Ã£o e SeguranÃ§a', 5, 'video', NULL, 100),
+    (v_mod4_id, 'ComposiÃ§Ã£o do Grupo de Reparo', 6, 'video', NULL, 100),
+    (v_mod4_id, 'Procedimentos para Combate a IncÃªndio', 7, 'video', NULL, 100);
+
+    -- ==============================================================================
+    -- MÃ“DULO 5: ORGANIZAÃ‡ÃƒO BÃSICA DA MARINHA DO BRASIL (ORDEM 5)
+    -- ==============================================================================
+    INSERT INTO public.modulos (title, description, "order", forca)
+    VALUES ('OrganizaÃ§Ã£o BÃ¡sica da Marinha do Brasil', 'Estrutura organizacional e meios navais.', 5, 'navy')
+    RETURNING id INTO v_mod5_id;
+
+    INSERT INTO public.aulas (module_id, title, "order", type, url, xp) VALUES
+    (v_mod5_id, 'OrganizaÃ§Ã£o BÃ¡sica', 1, 'video', NULL, 100),
+    (v_mod5_id, 'Meios Navais', 2, 'video', NULL, 100);
+
+    -- ==============================================================================
+    -- MÃ“DULO 6: COMUNICAÃ‡Ã•ES (ORDEM 6)
+    -- ==============================================================================
+    INSERT INTO public.modulos (title, description, "order", forca)
+    VALUES ('ComunicaÃ§Ãµes', 'Sistemas e procedimentos de comunicaÃ§Ãµes navais.', 6, 'navy')
+    RETURNING id INTO v_mod6_id;
+
+    INSERT INTO public.aulas (module_id, title, "order", type, url, xp) VALUES
+    (v_mod6_id, 'Generalidades sobre ComunicaÃ§Ãµes Navais', 1, 'video', NULL, 100),
+    (v_mod6_id, 'Meios de ComunicaÃ§Ãµes e Respectivos Canais', 2, 'video', NULL, 100),
+    (v_mod6_id, 'ClassificaÃ§Ã£o e ComposiÃ§Ã£o das Mensagens', 3, 'video', NULL, 100),
+    (v_mod6_id, 'ServiÃ§o Postal da Marinha', 4, 'video', NULL, 100);
+
+    -- ==============================================================================
+    -- MÃ“DULO 7: FATOS E TRADIÃ‡Ã•ES DA MARINHA DO BRASIL (ORDEM 7)
+    -- ==============================================================================
+    INSERT INTO public.modulos (title, description, "order", forca)
+    VALUES ('Fatos e TradiÃ§Ãµes da Marinha do Brasil', 'HistÃ³ria, tradiÃ§Ãµes e costumes navais.', 7, 'navy')
+    RETURNING id INTO v_mod7_id;
+
+    INSERT INTO public.aulas (module_id, title, "order", type, url, xp) VALUES
+    (v_mod7_id, 'TradiÃ§Ãµes e Uso do Mar', 1, 'video', NULL, 100),
+    (v_mod7_id, 'A Marinha do Brasil', 2, 'video', NULL, 100),
+    (v_mod7_id, 'Arte Marinheira', 3, 'video', NULL, 100),
+    (v_mod7_id, 'Principais Toques de Apitos', 4, 'video', NULL, 100);
+
+    -- ==============================================================================
+    -- MÃ“DULO 8: NOÃ‡Ã•ES DO SERVIÃ‡O GERAL DE TAIFA (ORDEM 8)
+    -- ==============================================================================
+    INSERT INTO public.modulos (title, description, "order", forca)
+    VALUES ('NoÃ§Ãµes do ServiÃ§o Geral de Taifa', 'ServiÃ§os de copa, cozinha e arrumaÃ§Ã£o.', 8, 'navy')
+    RETURNING id INTO v_mod8_id;
+
+    INSERT INTO public.aulas (module_id, title, "order", type, url, xp) VALUES
+    (v_mod8_id, 'Controle HigiÃªnico e SanitÃ¡rio', 1, 'video', NULL, 100),
+    (v_mod8_id, 'Conhecimento e UtilizaÃ§Ã£o do Material', 2, 'video', NULL, 100),
+    (v_mod8_id, 'Rouparia', 3, 'video', NULL, 100),
+    (v_mod8_id, 'ServiÃ§os de Despenseiro', 4, 'video', NULL, 100),
+    (v_mod8_id, 'ArrumaÃ§Ã£o e ServiÃ§o de Mesa', 5, 'video', NULL, 100);
+
+    -- ==============================================================================
+    -- MÃ“DULO 9: DOCUMENTOS ADMINISTRATIVOS (ORDEM 9)
+    -- ==============================================================================
+    INSERT INTO public.modulos (title, description, "order", forca)
+    VALUES ('Documentos Administrativos', 'IntroduÃ§Ã£o Ã  documentaÃ§Ã£o e informÃ¡tica.', 9, 'navy')
+    RETURNING id INTO v_mod9_id;
+
+    INSERT INTO public.aulas (module_id, title, "order", type, url, xp) VALUES
+    (v_mod9_id, 'Documentos Administrativos', 1, 'video', NULL, 100),
+    (v_mod9_id, 'InformÃ¡tica', 2, 'video', NULL, 100);
+
+END $$;
+
+-- 4. VALIDAÃ‡ÃƒO DOS DADOS (OUTPUT DE CONFERÃŠNCIA)
+SELECT '--- MÃ“DULOS NAVY ---' as check_title;
+SELECT "order", title, forca FROM public.modulos WHERE forca = 'navy' ORDER BY "order";
+
+SELECT '--- AULAS DO MÃ“DULO 0 ---' as check_title;
+SELECT l.lesson_order as "ordem", l.title, l.module_id 
+FROM public.aulas l
+JOIN public.modulos m ON m.id = l.module_id
+WHERE m.forca = 'navy' AND m."order" = 0
+ORDER BY l.lesson_order;
+
+-- ==============================================================================
+-- CORREÃ‡ÃƒO ESTRUTURAL DE VIEW: v_lessons_panel
+-- ==============================================================================
+-- Motivo: Corrigir falta de integridade relacional entre modulos (UUID) e legacy lessons (TEXT).
+--         Adicionar colunas de mÃ­dia (video_url, pdf_url) para suportar player.
+-- AÃ§Ã£o: Recria a view apontando para as tabelas corretas (public.aulas e public.modulos).
+-- Data: 31/01/2026
+-- ==============================================================================
+
+-- 1. Remove a view antiga (baseada em 'lessons')
+DROP VIEW IF EXISTS public.v_lessons_panel;
+
+-- 2. Recria a view com JOIN correto (UUID = UUID) e colunas de mÃ­dia mapeadas
+CREATE VIEW public.v_lessons_panel AS
+SELECT
+  a.id        AS lesson_id,
+  a.titulo    AS title,
+  a.modulo_id AS module,      -- Retorna UUID real, permitindo filtro correto frontend
+  a.ordem     AS lesson_order,
+  m.forca     AS force,
+  -- Mapeamento de mÃ­dia baseado no tipo para cumprir contrato do App
+  CASE WHEN a.type = 'video' THEN a.url ELSE NULL END AS video_url,
+  CASE WHEN a.type = 'pdf' THEN a.url ELSE NULL END AS pdf_url
+FROM public.aulas a
+JOIN public.modulos m
+  ON m.id = a.modulo_id;
+
+-- 3. ConfirmaÃ§Ã£o (apenas para log de execuÃ§Ã£o, se suportado)
+-- SELECT count(*) as total_aulas_conectadas FROM public.v_lessons_panel;
+-- ==============================================================================
+-- AUDITORIA C2 - FIX DEFINITIVO DE PROGRESSO
+-- ==============================================================================
+-- Motivo: Padronizar Writes, Eliminar Tabelas Fantasmas, Centralizar XP.
+-- Data: 01/02/2026
+-- ==============================================================================
+
+-- ETAPA 1: TABELA OFICIAL
+CREATE TABLE IF NOT EXISTS public.recruta_progresso (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  recruta_id uuid NOT NULL
+    REFERENCES public.recrutas(id) ON DELETE CASCADE,
+
+  lesson_id uuid NOT NULL
+    REFERENCES public.aulas(id) ON DELETE CASCADE,
+
+  status text NOT NULL CHECK (status IN ('completed')),
+
+  completed_at timestamptz NOT NULL DEFAULT now(),
+
+  xp_granted integer NOT NULL DEFAULT 0,
+
+  source text NOT NULL DEFAULT 'lesson_completion',
+
+  created_at timestamptz NOT NULL DEFAULT now(),
+
+  UNIQUE (recruta_id, lesson_id)
+);
+
+-- Habilitar RLS na nova tabela
+ALTER TABLE public.recruta_progresso ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Recrutas veem seu prÃ³prio progresso"
+  ON public.recruta_progresso
+  FOR SELECT
+  USING (auth.uid() = recruta_id);
+
+-- ETAPA 2: VIEW OFICIAL DE LEITURA
+CREATE OR REPLACE VIEW public.v_lesson_progress_panel AS
+SELECT
+  rp.recruta_id,
+  rp.lesson_id,
+  rp.completed_at,
+  rp.xp_granted
+FROM public.recruta_progresso rp;
+
+-- ETAPA 3: RPC OFICIAL DE ESCRITA
+CREATE OR REPLACE FUNCTION public.complete_lesson(
+  p_recruta_id uuid,
+  p_lesson_id uuid
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER -- Garante permissÃ£o para escrever e dar XP
+AS $$
+DECLARE
+  v_xp integer;
+BEGIN
+  -- Buscar XP da aula
+  SELECT xp INTO v_xp
+  FROM public.aulas
+  WHERE id = p_lesson_id;
+
+  -- Inserir Progresso (Idempotente)
+  INSERT INTO public.recruta_progresso (
+    recruta_id,
+    lesson_id,
+    status,
+    xp_granted
+  )
+  VALUES (
+    p_recruta_id,
+    p_lesson_id,
+    'completed',
+    COALESCE(v_xp, 0)
+  )
+  ON CONFLICT (recruta_id, lesson_id) DO NOTHING;
+
+  -- Conceder XP ao Recruta
+  -- (Assume que public.recrutas tem coluna xp)
+  UPDATE public.recrutas
+  SET xp = COALESCE(xp, 0) + COALESCE(v_xp, 0)
+  WHERE id = p_recruta_id;
+END;
+$$;
+-- ==============================================================================
+-- AUDITORIA C4 - INFRAESTRUTURA DE RANKING (CORREÃ‡ÃƒO DE SCHEMA)
+-- ==============================================================================
+-- Motivo: Ajuste rigoroso ao schema real do banco (recruta_id, xp).
+--         CorreÃ§Ã£o de nomes de colunas incorretos (user_id, amount).
+-- Data: 02/02/2026
+-- ==============================================================================
+
+-- 1. VIEW: RANKING GLOBAL
+-- Soma de XP por recruta (todas as forÃ§as), ordenaÃ§Ã£o decrescente.
+-- Tabela xp_eventos: recruta_id, xp
+CREATE OR REPLACE VIEW public.v_ranking_global AS
+SELECT
+    ROW_NUMBER() OVER (
+        ORDER BY COALESCE(SUM(xe.xp), 0) DESC, xe.recruta_id ASC
+    ) AS position,
+    xe.recruta_id,
+    r.nome,
+    COALESCE(SUM(xe.xp), 0) AS xp_total
+FROM public.xp_eventos xe
+JOIN public.recrutas r ON r.id = xe.recruta_id
+GROUP BY xe.recruta_id, r.nome;
+
+-- 2. VIEW: RANKING POR FORÃ‡A (GENÃ‰RICO)
+-- Ranking particionado por forÃ§a.
+-- Tabela recrutas: id, nome, forca
+CREATE OR REPLACE VIEW public.v_ranking_force AS
+SELECT
+    ROW_NUMBER() OVER (
+        PARTITION BY r.forca
+        ORDER BY COALESCE(SUM(xe.xp), 0) DESC, xe.recruta_id ASC
+    ) AS position,
+    xe.recruta_id,
+    r.nome,
+    COALESCE(SUM(xe.xp), 0) AS xp_total,
+    r.forca
+FROM public.xp_eventos xe
+JOIN public.recrutas r ON r.id = xe.recruta_id
+WHERE r.forca IS NOT NULL
+GROUP BY xe.recruta_id, r.nome, r.forca;
+
+-- ValidaÃ§Ã£o implÃ­cita:
+-- SELECT * FROM public.v_ranking_global LIMIT 1;
+-- SELECT * FROM public.v_ranking_force LIMIT 1;
+-- ==============================================================================
+-- AUDITORIA C5 - INFRAESTRUTURA DE MEDALHAS (COM REGRAS DINÃ‚MICAS)
+-- ==============================================================================
+-- Motivo: Sistema de conquistas simbÃ³licas com validaÃ§Ã£o via banco.
+-- Tabela de Regras permite ajustar dificuldade sem deploy de cÃ³digo.
+-- Data: 02/02/2026
+-- ==============================================================================
+
+-- 1. TABELA DE MEDALHAS (DefiniÃ§Ã£o)
+CREATE TABLE IF NOT EXISTS public.medalhas (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    codigo text NOT NULL UNIQUE, -- Slug: 'primeira-vitoria', 'xp-1000'
+    nome text NOT NULL,
+    descricao text,
+    icone_url text,
+    ativo boolean DEFAULT true,
+    created_at timestamptz DEFAULT now()
+);
+
+-- 2. TABELA DE REGRAS (LÃ³gica DinÃ¢mica)
+-- Define critÃ©rios para conquistar a medalha.
+-- Ex: medalha_id=X, metrica='xp_minimo', valor=1000
+-- Se uma medalha tiver mÃºltiplas regras, TODAS devem ser atendidas (AND).
+CREATE TABLE IF NOT EXISTS public.medalha_regras (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    medalha_id uuid NOT NULL REFERENCES public.medalhas(id) ON DELETE CASCADE,
+    metrica text NOT NULL, -- 'xp_total', 'aulas_concluidas'
+    operador text NOT NULL DEFAULT '>=', -- '>=', '=', '>'
+    valor integer NOT NULL,
+    created_at timestamptz DEFAULT now()
+);
+
+-- 3. TABELA DE CONCESSÃ•ES (Ledger)
+CREATE TABLE IF NOT EXISTS public.recruta_medalhas (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    recruta_id uuid NOT NULL REFERENCES public.recrutas(id) ON DELETE CASCADE,
+    medalha_id uuid NOT NULL REFERENCES public.medalhas(id) ON DELETE CASCADE,
+    concedido_em timestamptz DEFAULT now(),
+    UNIQUE(recruta_id, medalha_id)
+);
+
+-- RLS
+ALTER TABLE public.medalhas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read medalhas" ON public.medalhas FOR SELECT USING (true);
+
+ALTER TABLE public.medalha_regras ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read regras" ON public.medalha_regras FOR SELECT USING (true);
+
+ALTER TABLE public.recruta_medalhas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "User read own medals" ON public.recruta_medalhas FOR SELECT USING (auth.uid() = recruta_id);
+
+-- 4. VIEW: RECRUTA MEDALHAS (Frontend)
+CREATE OR REPLACE VIEW public.v_recruta_medalhas AS
+SELECT 
+    rm.recruta_id,
+    rm.concedido_em,
+    m.codigo,
+    m.nome,
+    m.descricao,
+    m.icone_url
+FROM public.recruta_medalhas rm
+JOIN public.medalhas m ON m.id = rm.medalha_id
+WHERE m.ativo = true;
+
+-- 5. RPC: GRANT MEDAL (Engine de ValidaÃ§Ã£o)
+CREATE OR REPLACE FUNCTION public.grant_medal(
+    recruta_id uuid,
+    medalha_codigo text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_medalha_id uuid;
+    v_ativo boolean;
+    r_regra RECORD;
+    v_recruta_xp int;
+    v_recruta_aulas int;
+    v_passou boolean := true;
+BEGIN
+    -- 1. Busca Medalha
+    SELECT id, ativo INTO v_medalha_id, v_ativo
+    FROM public.medalhas
+    WHERE codigo = medalha_codigo;
+
+    IF v_medalha_id IS NULL OR v_ativo = false THEN
+        RETURN false; -- Medalha nÃ£o existe ou inativa
+    END IF;
+
+    -- 2. Verifica se jÃ¡ possui
+    IF EXISTS (SELECT 1 FROM public.recruta_medalhas WHERE recruta_id = grant_medal.recruta_id AND medalha_id = v_medalha_id) THEN
+        RETURN true; -- JÃ¡ possui, considera sucesso (idempotente)
+    END IF;
+
+    -- 3. Engine de Regras
+    -- Carrega dados do recruta para comparaÃ§Ã£o
+    SELECT COALESCE(xp, 0) INTO v_recruta_xp FROM public.recrutas WHERE id = recruta_id;
+    
+    -- (Opcional) Contar aulas concluÃ­das se necessÃ¡rio
+    -- SELECT COUNT(*) INTO v_recruta_aulas FROM public.recruta_progresso WHERE recruta_id = grant_medal.recruta_id;
+
+    -- Itera sobre as regras da medalha
+    FOR r_regra IN SELECT * FROM public.medalha_regras WHERE medalha_id = v_medalha_id LOOP
+        
+        -- Regra: XP MÃ­nimo
+        IF r_regra.metrica = 'xp_total' THEN
+            IF r_regra.operador = '>=' THEN
+                IF v_recruta_xp < r_regra.valor THEN v_passou := false; END IF;
+            END IF;
+        END IF;
+
+        -- Regra: Manual (ex: evento especÃ­fico, skip check via DB)
+        -- Se metrica for 'evento_manual', supomos que a chamada RPC Ã© a prova.
+
+        -- Se falhar em qualquer regra, para.
+        IF v_passou = false THEN EXIT; END IF;
+    END LOOP;
+
+    -- 4. ConcessÃ£o
+    IF v_passou THEN
+        INSERT INTO public.recruta_medalhas (recruta_id, medalha_id)
+        VALUES (recruta_id, v_medalha_id)
+        ON CONFLICT DO NOTHING;
+        RETURN true;
+    ELSE
+        RETURN false; -- CritÃ©rios nÃ£o atendidos
+    END IF;
+END;
+$$;
+-- ==============================================================================
+-- AUDITORIA C6 - INFRAESTRUTURA DE PATENTES (MEMORIAL HIERÃRQUICO)
+-- ==============================================================================
+-- Motivo: ProgressÃ£o simbÃ³lica institucional (Rank System).
+-- DiferenÃ§a: Possui Hierarquia (NÃ­vel) e HistÃ³rico ObrigatÃ³rio.
+-- Data: 02/02/2026
+-- ==============================================================================
+
+-- 1. TABELA: CATÃLOGO DE PATENTES
+CREATE TABLE IF NOT EXISTS public.patentes_catalogo (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    codigo text NOT NULL UNIQUE,  -- 'recruta', 'soldado', 'cabo'
+    titulo text NOT NULL,
+    nivel integer NOT NULL,       -- 1, 2, 3... (Define a hierarquia)
+    descricao text,
+    icone_url text,
+    ativo boolean DEFAULT true,
+    created_at timestamptz DEFAULT now(),
+    
+    CONSTRAINT unique_nivel_ativo UNIQUE (nivel, codigo) -- Evita duplicidade lÃ³gica
+);
+
+-- RLS: Leitura pÃºblica
+ALTER TABLE public.patentes_catalogo ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read patentes" ON public.patentes_catalogo FOR SELECT USING (true);
+
+
+-- 2. TABELA: REGRAS DE PROMOÃ‡ÃƒO
+-- Similar Ã  C5, mas aplicada a Patentes.
+CREATE TABLE IF NOT EXISTS public.patente_regras (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    patente_id uuid NOT NULL REFERENCES public.patentes_catalogo(id) ON DELETE CASCADE,
+    metrica text NOT NULL, -- 'xp_total', 'dias_servico', 'modulos_concluidos'
+    operador text NOT NULL DEFAULT '>=',
+    valor integer NOT NULL,
+    created_at timestamptz DEFAULT now()
+);
+
+-- RLS
+ALTER TABLE public.patente_regras ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read regras patente" ON public.patente_regras FOR SELECT USING (true);
+
+
+-- 3. TABELA: HISTÃ“RICO DE PATENTES (Recruta Patentes)
+CREATE TABLE IF NOT EXISTS public.recruta_patentes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    recruta_id uuid NOT NULL REFERENCES public.recrutas(id) ON DELETE CASCADE,
+    patente_id uuid NOT NULL REFERENCES public.patentes_catalogo(id) ON DELETE CASCADE,
+    promovido_em timestamptz DEFAULT now(),
+    motivo text NOT NULL DEFAULT 'promocao_automatica', -- 'merito', 'admin', 'inicial'
+    
+    -- Diferente de medalhas, aqui permitimos que o usuÃ¡rio tenha patentes antigas.
+    -- O 'current' Ã© definido pelo nÃ­vel mais alto ou data mais recente.
+    created_at timestamptz DEFAULT now()
+);
+
+-- RLS
+ALTER TABLE public.recruta_patentes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "User read own career" ON public.recruta_patentes 
+    FOR SELECT USING (auth.uid() = recruta_id);
+
+
+-- 4. VIEW: PATENTE ATUAL (Latest State)
+-- Retorna a patente de maior NÃVEL que o usuÃ¡rio possui.
+CREATE OR REPLACE VIEW public.v_recruta_patente_atual AS
+SELECT DISTINCT ON (rp.recruta_id)
+    rp.recruta_id,
+    p.codigo,
+    p.titulo,
+    p.nivel,
+    p.icone_url,
+    rp.promovido_em
+FROM public.recruta_patentes rp
+JOIN public.patentes_catalogo p ON p.id = rp.patente_id
+WHERE p.ativo = true
+ORDER BY rp.recruta_id, p.nivel DESC, rp.promovido_em DESC;
+
+
+-- 5. VIEW: HISTÃ“RICO COMPLETO (Timeline)
+CREATE OR REPLACE VIEW public.v_historico_patentes AS
+SELECT 
+    rp.recruta_id,
+    p.titulo,
+    p.nivel,
+    rp.promovido_em,
+    rp.motivo
+FROM public.recruta_patentes rp
+JOIN public.patentes_catalogo p ON p.id = rp.patente_id
+ORDER BY rp.promovido_em DESC;
+
+
+-- 6. RPC: PROMOVER RECRUTA (Engine HierÃ¡rquica)
+CREATE OR REPLACE FUNCTION public.promover_recruta(
+    p_recruta_id uuid,
+    p_patente_codigo text,
+    p_motivo text DEFAULT 'merito'
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_nova_patente_id uuid;
+    v_novo_nivel integer;
+    v_nivel_atual integer;
+    v_recruta_xp int;
+    v_ativo boolean;
+    r_regra RECORD;
+    v_passou boolean := true;
+BEGIN
+    -- A. Busca Patente Alvo
+    SELECT id, nivel, ativo INTO v_nova_patente_id, v_novo_nivel, v_ativo
+    FROM public.patentes_catalogo
+    WHERE codigo = p_patente_codigo;
+
+    IF v_nova_patente_id IS NULL OR v_ativo = false THEN
+        RETURN false; -- Patente invalida
+    END IF;
+
+    -- B. Busca NÃ­vel Atual do Recruta (Max Level)
+    SELECT MAX(p.nivel) INTO v_nivel_atual
+    FROM public.recruta_patentes rp
+    JOIN public.patentes_catalogo p ON p.id = rp.patente_id
+    WHERE rp.recruta_id = p_recruta_id;
+
+    v_nivel_atual := COALESCE(v_nivel_atual, 0); -- Se 0, Ã© Recruta NÃ­vel 0 (sem patente)
+
+    -- C. ValidaÃ§Ã£o HierÃ¡rquica: SÃ³ promove para cima
+    -- (Opcional: permitir 'rebaixamento' se p_motivo = 'punicao', mas aqui seguimos regra padrÃ£o)
+    IF v_novo_nivel <= v_nivel_atual THEN
+        RETURN false; -- JÃ¡ possui patente igual ou superior
+    END IF;
+
+    -- D. Check de JÃ¡ Possui (IdempotÃªncia temporal)
+    -- Se jÃ¡ tem esse registro exato, ignora? Na verdade o check de nÃ­vel acima jÃ¡ filtra.
+    -- Mas garantimos nÃ£o duplicar o exato mesmo registro.
+    IF EXISTS (SELECT 1 FROM public.recruta_patentes WHERE recruta_id = p_recruta_id AND patente_id = v_nova_patente_id) THEN
+        RETURN true; 
+    END IF;
+
+    -- E. Engine de Regras (Ex: XP MÃ­nimo)
+    SELECT COALESCE(xp, 0) INTO v_recruta_xp FROM public.recrutas WHERE id = p_recruta_id;
+
+    FOR r_regra IN SELECT * FROM public.patente_regras WHERE patente_id = v_nova_patente_id LOOP
+        
+        -- Regra: XP Total
+        IF r_regra.metrica = 'xp_total' THEN
+            IF r_regra.operador = '>=' THEN
+                IF v_recruta_xp < r_regra.valor THEN v_passou := false; END IF;
+            END IF;
+        END IF;
+
+        IF v_passou = false THEN EXIT; END IF;
+    END LOOP;
+
+    -- F. ConcessÃ£o
+    IF v_passou THEN
+        INSERT INTO public.recruta_patentes (recruta_id, patente_id, motivo)
+        VALUES (p_recruta_id, v_nova_patente_id, p_motivo);
+        RETURN true;
+    ELSE
+        RETURN false;
+    END IF;
+END;
+$$;
+-- 1. CORREÃ‡ÃƒO DA TABELA PROFILES
+-- Adiciona colunas se nÃ£o existirem
+ALTER TABLE public.profiles 
+ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0;
+
+ALTER TABLE public.profiles 
+ADD COLUMN IF NOT EXISTS forca TEXT DEFAULT 'marinha';
+
+-- Remove constraint antiga se existir para evitar conflito e recria
+ALTER TABLE public.profiles 
+DROP CONSTRAINT IF EXISTS check_forca_values;
+
+ALTER TABLE public.profiles 
+ADD CONSTRAINT check_forca_values 
+CHECK (forca IN ('marinha', 'exercito', 'aeronautica'));
+
+-- 2. TABELAS DE AULAS (NecessÃ¡rias para o Dashboard e RPC)
+CREATE TABLE IF NOT EXISTS public.aulas (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    titulo TEXT NOT NULL,
+    descricao TEXT,
+    video_url TEXT,
+    modulo_id UUID, 
+    ordem INTEGER DEFAULT 0,
+    xp_recompensa INTEGER DEFAULT 10,
+    ativa BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.progresso_aulas (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    aula_id UUID REFERENCES public.aulas(id) ON DELETE CASCADE,
+    concluida BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(user_id, aula_id)
+);
+
+-- 3. VIEWS DE RANKING (Com XP e ForÃ§a)
+
+CREATE OR REPLACE VIEW public.vw_ranking_mensal AS
+SELECT
+    ROW_NUMBER() OVER (ORDER BY p.xp DESC, p.nome ASC) as posicao,
+    p.id as recruta_id,
+    p.nome,
+    p.xp,
+    p.forca, -- Adicionado para permitir exibiÃ§Ã£o do Ã­cone/tema correto no ranking
+    p.patente
+FROM
+    public.profiles p
+WHERE
+    p.ativo = true;
+
+CREATE OR REPLACE VIEW public.vw_posicao_recruta_mes AS
+SELECT
+    r.posicao,
+    r.recruta_id,
+    r.nome,
+    r.xp,
+    r.forca
+FROM
+    public.vw_ranking_mensal r;
+
+-- 4. RPC: PROGESSO GERAL
+CREATE OR REPLACE FUNCTION recruta_progresso_geral(p_recruta_id uuid)
+RETURNS TABLE (
+  completed bigint,
+  total bigint
+) 
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_completed bigint;
+  v_total bigint;
+BEGIN
+  SELECT count(*) INTO v_total FROM aulas WHERE ativa = true;
+
+  SELECT count(*) INTO v_completed 
+  FROM progresso_aulas 
+  WHERE user_id = p_recruta_id AND concluida = true;
+
+  RETURN QUERY
+  SELECT 
+    COALESCE(v_completed, 0),
+    CASE WHEN COALESCE(v_total, 0) = 0 THEN 1 ELSE v_total END;
+END;
+$$;
+-- 1. TABELA AULAS (Se nÃ£o existir)
+CREATE TABLE IF NOT EXISTS public.aulas (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    titulo TEXT NOT NULL,
+    descricao TEXT,
+    video_url TEXT,
+    modulo_id UUID, -- Caso haja tabela de mÃ³dulos
+    ordem INTEGER DEFAULT 0,
+    xp_recompensa INTEGER DEFAULT 10,
+    ativa BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 2. TABELA PROGRESSO_AULAS (DependÃªncia da RPC)
+CREATE TABLE IF NOT EXISTS public.progresso_aulas (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    aula_id UUID REFERENCES public.aulas(id) ON DELETE CASCADE,
+    concluida BOOLEAN DEFAULT false,
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(user_id, aula_id)
+);
+
+-- 3. FUNÃ‡ÃƒO DE PROGESSO (RPC)
+CREATE OR REPLACE FUNCTION recruta_progresso_geral(p_recruta_id uuid)
+RETURNS TABLE (
+  completed bigint,
+  total bigint
+) 
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_completed bigint;
+  v_total bigint;
+BEGIN
+  -- Total de aulas ativas no sistema
+  SELECT count(*) INTO v_total
+  FROM aulas
+  WHERE ativa = true;
+
+  -- Total de aulas concluÃ­das pelo recruta
+  SELECT count(*) INTO v_completed
+  FROM progresso_aulas
+  WHERE user_id = p_recruta_id
+  AND concluida = true;
+
+  -- Retorno dos dados
+  RETURN QUERY
+  SELECT 
+    COALESCE(v_completed, 0),
+    CASE WHEN COALESCE(v_total, 0) = 0 THEN 1 ELSE v_total END; 
+END;
+$$;
+
+-- 4. VIEW DE RANKING (vw_ranking_mensal)
+-- Assume que profiles tem uma coluna de 'pontos' ou calcula baseado em progresso
+-- Aqui vamos criar uma view que expÃµe 'pontos' como 'xp'
+CREATE OR REPLACE VIEW public.vw_ranking_mensal AS
+SELECT
+    ROW_NUMBER() OVER (ORDER BY p.pontos DESC, p.nome ASC) as posicao,
+    p.id as recruta_id,
+    p.nome,
+    COALESCE(p.pontos, 0) as xp, -- Mapeia 'pontos' para 'xp'
+    p.forca,
+    p.patente
+FROM
+    public.profiles p
+WHERE
+    p.ativo = true;
+
+-- 5. VIEW DE POSIÃ‡ÃƒO INDIVIDUAL (vw_posicao_recruta_mes)
+CREATE OR REPLACE VIEW public.vw_posicao_recruta_mes AS
+SELECT
+    r.posicao,
+    r.recruta_id,
+    r.nome,
+    r.xp
+FROM
+    public.vw_ranking_mensal r;
+-- CRIAÃ‡ÃƒO DA TABELA FORCAS
+CREATE TABLE IF NOT EXISTS public.forcas (
+    id TEXT PRIMARY KEY, -- 'marinha', 'exercito', 'aeronautica'
+    nome TEXT NOT NULL,
+    cor_primaria TEXT NOT NULL,
+    cor_secundaria TEXT NOT NULL,
+    cor_fundo TEXT NOT NULL,
+    icone TEXT
+);
+
+-- Ativa RLS (opcional, mas boa prÃ¡tica - definindo polÃ­tica de leitura pÃºblica)
+ALTER TABLE public.forcas ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Leitura pÃºblica de forÃ§as" 
+ON public.forcas FOR SELECT 
+TO authenticated, anon 
+USING (true);
+
+-- SEED DOS DADOS (Cores tiradas do forceThemes.ts)
+INSERT INTO public.forcas (id, nome, cor_primaria, cor_secundaria, cor_fundo, icone)
+VALUES
+('marinha', 'Marinha do Brasil', '#0A2A43', '#C9A24D', '#060F18', 'âš“'),
+('exercito', 'ExÃ©rcito Brasileiro', '#2F3E1E', '#A3B18A', '#141A10', 'ðŸª–'),
+('aeronautica', 'ForÃ§a AÃ©rea Brasileira', '#1C2B3A', '#5DA9E9', '#0B1620', 'âœˆï¸')
+ON CONFLICT (id) DO UPDATE SET
+    cor_primaria = EXCLUDED.cor_primaria,
+    cor_secundaria = EXCLUDED.cor_secundaria,
+    cor_fundo = EXCLUDED.cor_fundo,
+    icone = EXCLUDED.icone;
+-- 1. SEED MÃ“DULOS DE TESTE
+-- Insere mÃ³dulos se nÃ£o existirem (evita duplicaÃ§Ã£o por tÃ­tulo)
+INSERT INTO public.modulos (titulo, descricao, forca, ordem, is_degustacao)
+SELECT 'BÃSICO NAVAL', 'IntroduÃ§Ã£o Ã  vida na Marinha.', 'marinha', 1, false
+WHERE NOT EXISTS (SELECT 1 FROM public.modulos WHERE titulo = 'BÃSICO NAVAL');
+
+INSERT INTO public.modulos (titulo, descricao, forca, ordem, is_degustacao)
+SELECT 'INFANTARIA', 'TÃ¡ticas de combate terrestre.', 'exercito', 1, false
+WHERE NOT EXISTS (SELECT 1 FROM public.modulos WHERE titulo = 'INFANTARIA');
+
+INSERT INTO public.modulos (titulo, descricao, forca, ordem, is_degustacao)
+SELECT 'AERONÃUTICA BÃSICA', 'Fundamentos de voo e mecÃ¢nica.', 'aeronautica', 1, false
+WHERE NOT EXISTS (SELECT 1 FROM public.modulos WHERE titulo = 'AERONÃUTICA BÃSICA');
+
+-- 2. CORREÃ‡ÃƒO DA RPC (ativa -> ativo)
+-- Assume que a coluna na tabela aulas deve ser tratada como 'ativa' ou 'ativo'.
+-- Se a tabela foi criada como 'ativa', idealmente deverÃ­amos renomear, mas vamos ajustar a RPC para o que o usuÃ¡rio pediu.
+-- Se a tabela 'aulas' nÃ£o tiver coluna 'ativo', este script pode falhar se nÃ£o alterarmos a tabela tambÃ©m.
+-- Vamos garantir que a coluna 'ativo' exista ou renomear 'ativa' para 'ativo'.
+
+DO $$
+BEGIN
+  IF EXISTS(SELECT *
+    FROM information_schema.columns
+    WHERE table_name='aulas' and column_name='ativa')
+  THEN
+      ALTER TABLE public.aulas RENAME COLUMN ativa TO ativo;
+  END IF;
+END $$;
+
+-- Recria a RPC usando 'ativo'
+CREATE OR REPLACE FUNCTION recruta_progresso_geral(p_recruta_id uuid)
+RETURNS TABLE (
+  completed bigint,
+  total bigint
+) 
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_completed bigint;
+  v_total bigint;
+BEGIN
+  -- Total de aulas ativas (agora usando 'ativo')
+  SELECT count(*) INTO v_total FROM aulas WHERE ativo = true;
+
+  -- Aulas concluÃ­das pelo usuÃ¡rio
+  SELECT count(*) INTO v_completed 
+  FROM progresso_aulas 
+  WHERE user_id = p_recruta_id AND concluida = true;
+
+  RETURN QUERY
+  SELECT 
+    COALESCE(v_completed, 0),
+    CASE WHEN COALESCE(v_total, 0) = 0 THEN 1 ELSE v_total END;
+END;
+$$;
+-- ==============================================================================
+-- SEED QA: DADOS DE TESTE (MANUAL QA)
+-- ==============================================================================
+-- Execute este script no SQL Editor do Supabase para criar o ambiente de teste.
+
+-- 1. CriaÃ§Ã£o de MÃ³dulo de Teste (VisÃ­vel no Dashboard)
+-- Schema corrigido: titulo, descricao, ordem, ativo, is_degustacao
+INSERT INTO public.modulos (id, titulo, descricao, ordem, forca, ativo, is_degustacao, created_at)
+VALUES (
+    'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', -- ID Fixo para Teste
+    'MÃ“DULO QA - TESTE MANUAL',
+    'MÃ³dulo exclusivo para validaÃ§Ã£o de fluxo de aula e player.',
+    99, -- Ordem alta
+    'marinha',
+    true, -- Ativo
+    false, -- NÃ£o Ã© degustaÃ§Ã£o
+    now()
+) ON CONFLICT (id) DO UPDATE SET
+    titulo = EXCLUDED.titulo,
+    descricao = EXCLUDED.descricao,
+    ativo = true;
+
+-- 2. CriaÃ§Ã£o de Aula 01 (VÃ­deo VÃ¡lido)
+INSERT INTO public.aulas (id, modulo_id, titulo, descricao, video_url, ordem, xp_recompensa, ativa, created_at)
+VALUES (
+    'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b22', -- ID Fixo Aula 01
+    'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', -- Link ao MÃ³dulo QA
+    'Aula Teste 01 - Big Buck Bunny',
+    'Teste de playback de vÃ­deo e persistÃªncia de progresso.',
+    'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4', -- VÃ­deo PÃºblico Seguro
+    1,
+    100,
+    true,
+    now()
+) ON CONFLICT (id) DO UPDATE SET
+    video_url = EXCLUDED.video_url,
+    ativa = true;
+
+-- 3. CriaÃ§Ã£o de Aula 02 (VÃ­deo VÃ¡lido)
+INSERT INTO public.aulas (id, modulo_id, titulo, descricao, video_url, ordem, xp_recompensa, ativa, created_at)
+VALUES (
+    'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380c33', -- ID Fixo Aula 02
+    'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', -- Link ao MÃ³dulo QA
+    'Aula Teste 02 - Jellyfish',
+    'Teste de navegaÃ§Ã£o entre aulas e retorno ao dashboard.',
+    'https://test-videos.co.uk/vids/jellyfish/mp4/h264/360/Jellyfish_360_10s_1MB.mp4', -- VÃ­deo PÃºblico Seguro
+    2,
+    100,
+    true,
+    now()
+) ON CONFLICT (id) DO UPDATE SET
+    video_url = EXCLUDED.video_url,
+    ativa = true;
+
+-- 4. ConfirmaÃ§Ã£o
+SELECT id, titulo, video_url FROM public.aulas WHERE module_id = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+-- 1. PADRONIZAÃ‡ÃƒO DE XP (PROFILES)
+-- Adiciona a coluna 'xp' se nÃ£o existir
+ALTER TABLE public.profiles 
+ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0;
+
+-- 2. TABELA DE AULAS (NecessÃ¡ria para o dashboard 'MÃ³dulos')
+CREATE TABLE IF NOT EXISTS public.aulas (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    titulo TEXT NOT NULL,
+    descricao TEXT,
+    video_url TEXT,
+    modulo_id UUID, 
+    ordem INTEGER DEFAULT 0,
+    xp_recompensa INTEGER DEFAULT 10,
+    ativa BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 3. TABELA PROGRESSO_AULAS (NecessÃ¡ria para contar 'ConcluÃ­dos')
+CREATE TABLE IF NOT EXISTS public.progresso_aulas (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    aula_id UUID REFERENCES public.aulas(id) ON DELETE CASCADE,
+    concluida BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(user_id, aula_id)
+);
+
+-- 4. VIEWS DE RANKING (Atualizadas para usar coluna 'xp')
+
+-- View: Ranking Mensal
+CREATE OR REPLACE VIEW public.vw_ranking_mensal AS
+SELECT
+    ROW_NUMBER() OVER (ORDER BY p.xp DESC, p.nome ASC) as posicao,
+    p.id as recruta_id,
+    p.nome,
+    p.xp,     -- Agora usa explicitamente a coluna 'xp'
+    p.forca,
+    p.patente
+FROM
+    public.profiles p
+WHERE
+    p.ativo = true;
+
+-- View: PosiÃ§Ã£o do Recruta
+CREATE OR REPLACE VIEW public.vw_posicao_recruta_mes AS
+SELECT
+    r.posicao,
+    r.recruta_id,
+    r.nome,
+    r.xp
+FROM
+    public.vw_ranking_mensal r;
+
+-- 5. RPC: PROGESSO GERAL (Para o Dashboard)
+-- MantÃ©m a lÃ³gica de contar Aulas/MÃ³dulos para preencher a barra de progresso visual
+CREATE OR REPLACE FUNCTION recruta_progresso_geral(p_recruta_id uuid)
+RETURNS TABLE (
+  completed bigint,
+  total bigint
+) 
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_completed bigint;
+  v_total bigint;
+BEGIN
+  -- Total de aulas ativas
+  SELECT count(*) INTO v_total FROM aulas WHERE ativa = true;
+
+  -- Aulas concluÃ­das pelo usuÃ¡rio
+  SELECT count(*) INTO v_completed 
+  FROM progresso_aulas 
+  WHERE user_id = p_recruta_id AND concluida = true;
+
+  RETURN QUERY
+  SELECT 
+    COALESCE(v_completed, 0),
+    CASE WHEN COALESCE(v_total, 0) = 0 THEN 1 ELSE v_total END;
+END;
+$$;
+-- FunÃ§Ã£o RPC para calcular progresso do recruta
+-- Retorna: { completed: integer, total: integer }
+
+create or replace function recruta_progresso_geral(p_recruta_id uuid)
+returns table (
+  completed bigint,
+  total bigint
+) 
+language plpgsql
+security definer
+as $$
+declare
+  v_completed bigint;
+  v_total bigint;
+begin
+  -- Total de aulas ativas no sistema
+  select count(*) into v_total
+  from aulas
+  where ativa = true;
+
+  -- Total de aulas concluÃ­das pelo recruta
+  select count(*) into v_completed
+  from progresso_aulas
+  where user_id = p_recruta_id
+  and concluida = true;
+
+  -- Retorno dos dados
+  return query
+  select 
+    coalesce(v_completed, 0),
+    case when coalesce(v_total, 0) = 0 then 1 else v_total end; -- Evita divisÃ£o por zero no front
+end;
+$$;
+-- Adiciona o campo se nÃ£o existir
+ALTER TABLE public.profiles 
+ADD COLUMN IF NOT EXISTS instructor_profile_id text;
+
+-- Cria a constraint de validaÃ§Ã£o
+ALTER TABLE public.profiles 
+DROP CONSTRAINT IF EXISTS check_instructor_type; -- Drop if exists to avoid error on retry
+
+ALTER TABLE public.profiles 
+ADD CONSTRAINT check_instructor_type 
+CHECK (instructor_profile_id IN ('objetivo', 'estrategico', 'didatico'));
+CREATE OR REPLACE FUNCTION recruta_progresso_geral(p_recruta_id UUID)
+RETURNS TABLE (
+  completed BIGINT,
+  total BIGINT,
+  percentage NUMERIC
+) 
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN QUERY
+  WITH total_aulas AS (
+    -- Conta todas as aulas de mÃ³dulos que nÃ£o sÃ£o degustaÃ§Ã£o (ou todos, dependendo da regra)
+    -- Assumindo que queremos contar tudo que estÃ¡ ativo.
+    -- Ajuste 'ativo' para 'ativa' se for o nome da coluna no seu banco, ou remova se nÃ£o existir.
+    -- O prompt pediu para "remover qualquer referÃªncia Ã  coluna ativa".
+    SELECT COUNT(*)::BIGINT as total
+    FROM aulas a
+    JOIN modulos m ON a.modulo_id = m.id
+    -- WHERE m.ativa = true -- REMOVIDO conforme pedido
+  ),
+  aulas_concluidas AS (
+    SELECT COUNT(DISTINCT pa.aula_id)::BIGINT as concluido
+    FROM progresso_aulas pa
+    WHERE pa.user_id = p_recruta_id
+    -- AND pa.concluida = true -- Se a tabela sÃ³ tem registros de concluidos, nÃ£o precisa filtrar. Se tem status, descomentar.
+    -- Assumindo que a existÃªncia na tabela implica conclusÃ£o ou hÃ¡ coluna bool.
+    -- O prompt diz "garantindo que ela conte o progresso real".
+  )
+  SELECT 
+    c.concluido as completed,
+    t.total as total,
+    CASE 
+      WHEN t.total > 0 THEN ROUND((c.concluido::NUMERIC / t.total::NUMERIC) * 100, 2)
+      ELSE 0 
+    END as percentage
+  FROM total_aulas t, aulas_concluidas c;
+END;
+$$;

@@ -98,9 +98,9 @@ serve(async (req: Request) => {
         const openai = new OpenAI({ apiKey: openaiKey });
 
         const { data: profile, error } = await supabase
-            .from('profiles')
+            .from('v_identidade_recruta')
             .select('forca, instructor_profile_id')
-            .eq('id', userId)
+            .eq('auth_id', userId)
             .single();
 
         if (error || !profile?.forca) {

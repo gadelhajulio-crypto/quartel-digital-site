@@ -50,13 +50,13 @@ export function HierarchyBadge({ nivelAtual }: HierarchyBadgeProps) {
                 styles.container,
                 {
                     backgroundColor: theme.card,
-                    borderColor: theme.border,
+                    borderColor: 'rgba(255,255,255,0.1)',
                 },
             ]}
         >
             <Image source={hierarchy.icon} style={styles.icon} />
 
-            <Text style={[styles.label, { color: theme.text }]}>
+            <Text style={[styles.label, { color: theme.textPrimary }]}>
                 {hierarchy.label}
             </Text>
         </View>

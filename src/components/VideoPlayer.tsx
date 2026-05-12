@@ -2,7 +2,7 @@ import React from 'react';
 import { View, StyleSheet } from "react-native";
 import { Video, ResizeMode } from "expo-av";
 
-export function VideoPlayer({ uri }: { uri: string }) {
+export function VideoPlayer({ uri, onComplete }: { uri: string; onComplete?: () => void }) {
     return (
         <View style={styles.container}>
             <Video
@@ -10,6 +10,11 @@ export function VideoPlayer({ uri }: { uri: string }) {
                 useNativeControls
                 resizeMode={ResizeMode.CONTAIN}
                 style={styles.video}
+                onPlaybackStatusUpdate={(status) => {
+                    if (status.isLoaded && status.didJustFinish && onComplete) {
+                        onComplete();
+                    }
+                }}
             />
         </View>
     );

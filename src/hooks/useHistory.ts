@@ -24,7 +24,7 @@ export function useHistory(userId: string) {
             try {
                 // Querying the view exactly as requested
                 const { data, error } = await supabase
-                    .from('v_historico_progresso_recruta')
+                    .from('v_historico_atividade_recruta_v3')
                     .select('*');
                 // Assuming the view is already ordered by date desc as per prompt requirement ("Ordenação já vem do banco")
                 // If not, prompt says "Ordenação já vem do banco (não ordenar no app)"

@@ -32,7 +32,7 @@ export default function InstructionsInProgress() {
             // Assuming 'modulos' table.
 
             const { data, error } = await supabase
-                .from('modulos')
+                .from('v_modulos_catalogo')
                 .select('*')
                 .eq('publicado', true)
                 .order('ordem', { ascending: true })

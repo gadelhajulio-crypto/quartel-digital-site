@@ -7,6 +7,12 @@ export interface ModuleLesson {
     lesson_order: number;
     lesson_title: string;
     status: LessonStatus;
+    module_id: string;
+    module_title: string;
+    forca: string;
+    is_degustacao: boolean;
+    video_url: string | null;
+    pdf_url: string | null;
 }
 
 export function useModuleLessons(moduleId: string) {
@@ -19,22 +25,25 @@ export function useModuleLessons(moduleId: string) {
         async function loadLessons() {
             setLoading(true);
 
-            const { data, error } = await supabase
-                .from('v_module_lessons') // view pronta no backend
-                .select('*')
-                .eq('module_id', moduleId)
-                .order('lesson_order');
+            try {
+                // View canônica: vw_rdm_lessons_v2 — filtro por module_id
+                const { data, error } = await supabase
+                    .from('vw_rdm_lessons_v2')
+                    .select('*')
+                    .eq('module_id', moduleId)
+                    .order('lesson_order');
 
-            if (!active) return;
+                if (!active) return;
 
-            if (error) {
-                console.error('[MODULE LESSONS] Erro ao carregar aulas:', error);
-                setLessons([]);
-            } else {
-                setLessons(data ?? []);
+                if (error) throw error;
+
+                setLessons((data as ModuleLesson[]) ?? []);
+            } catch (err) {
+                console.error('[MODULE LESSONS] Erro ao carregar aulas (Silencioso):', err);
+                if (active) setLessons([]);
+            } finally {
+                if (active) setLoading(false);
             }
-
-            setLoading(false);
         }
 
         if (moduleId) {

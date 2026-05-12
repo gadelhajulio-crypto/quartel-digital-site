@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { startOfMonth, format } from 'date-fns';
 
 export function useRecruitPanel(userId: string, userForce: string) {
     const [xp, setXp] = useState(0);
-    const [ranking, setRanking] = useState(0);
+    const [ranking] = useState<number | null>(null); // Ranking bloqueado — C6 Contract Registry
     const [completed, setCompleted] = useState(0);
     const [isChampion, setIsChampion] = useState(false);
     const [pendingReviews, setPendingReviews] = useState(0);
@@ -47,57 +46,47 @@ export function useRecruitPanel(userId: string, userForce: string) {
                 return;
             }
 
-            const currentMonth = format(startOfMonth(new Date()), 'yyyy-MM-dd');
-
             try {
                 // Parallel fetch of indicators AND canonical next lesson
                 const [
                     xpRes,
-                    rankRes,
-                    champRes,
                     completedRes,
                     nextLessonRes,
                     noticesRes
                 ] = await Promise.all([
-                    // 1. XP
-                    supabase.from('mv_xp_mensal_recruta')
-                        .select('xp_mensal')
-                        .eq('user_id', userId).eq('force', userForce).eq('month_ref', currentMonth).maybeSingle(),
-                    // 2. Ranking
-                    supabase.from('mv_ranking_mensal')
-                        .select('rank_position')
-                        .eq('user_id', userId).eq('force', userForce).eq('month_ref', currentMonth).maybeSingle(),
-                    // 3. Champion
-                    supabase.from('mv_campeao_mensal')
-                        .select('user_id')
-                        .eq('force', userForce).eq('month_ref', currentMonth).maybeSingle(),
-                    // 4. Completed Count
+                    // 1. XP total canônico
+                    supabase.from('v_recruta_xp_total')
+                        .select('xp_total')
+                        .eq('recruta_id', userId).maybeSingle(),
+                    // 2. Completed Count (v_completed_lessons_count mantém alias user_id)
                     supabase.from('v_completed_lessons_count')
                         .select('completed_count')
                         .eq('user_id', userId).maybeSingle(),
-                    // 5. Canonical Next Lesson (Server Side)
+                    // 3. Canonical Next Lesson (Server Side)
                     supabase.rpc('get_student_next_lesson', { p_user_id: userId }).maybeSingle(),
-                    // 6. Unread Notices Count
+                    // 4. Unread Notices Count
                     supabase.from('v_institutional_notices')
                         .select('notice_id', { count: 'exact', head: true })
                         .eq('is_read', false)
                 ]);
 
                 // Set Indicators
-                setXp(xpRes.data?.xp_mensal || 0);
-                setRanking(rankRes.data?.rank_position || 0);
-                setIsChampion(champRes.data?.user_id === userId);
+                setXp(xpRes.data?.xp_total || 0);
+                // ranking = null — bloqueado por C6 Contract Registry (frontend_scope: ranking = blocked)
+                // isChampion = false — ranking em implantação
+                setIsChampion(false);
                 setCompleted(completedRes.data?.completed_count || 0);
                 setPendingReviews(0);
                 setUnreadNoticesCount(noticesRes.count || 0);
 
-                // Set Next Lesson from RPC
-                if (nextLessonRes.data) {
+                // Set Next Lesson from RPC (get_student_next_lesson retorna rows tipadas)
+                const nextRow = nextLessonRes.data as { lesson_id: string; title: string; module: string; lesson_order: number } | null;
+                if (nextRow) {
                     setNextLesson({
-                        id: nextLessonRes.data.lesson_id,
-                        title: nextLessonRes.data.title,
-                        module: nextLessonRes.data.module,
-                        order: nextLessonRes.data.lesson_order
+                        id: nextRow.lesson_id,
+                        title: nextRow.title,
+                        module: nextRow.module,
+                        order: nextRow.lesson_order
                     });
                 } else {
                     // Logic handles 'completed course' implicit via null return + high completion count?
