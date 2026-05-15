@@ -1,6 +1,6 @@
 // RCC-0.5 / Wave 1 — Onboarding: seleção de instrutor
 // Fonte: v_instrutores_app (backend-driven, sem hardcode).
-// Confirma via rpc_set_instructor_profile → retriggerGate.
+// Confirma via rpc_update_instructor_profile(slug) → retriggerGate.
 
 import { useState, useEffect } from 'react';
 import { View, Text, Image, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
@@ -49,21 +49,32 @@ export default function OnboardingInstrutor() {
     setSaving(true);
     setSaveError(null);
 
-    console.log('[INSTRUCTOR_UX_W1] update_start', { selected });
+    const rpcPayload = { p_instructor_profile_id: selected };
+    const selectedInstructor = instructors.find((i) => i.slug === selected) ?? null;
+
+    console.log('[INSTRUCTOR_RPC_CALL]', {
+      selectedInstructor,
+      p_instructor_profile_id: selected,
+      slug: selectedInstructor?.slug ?? null,
+      codigo: selectedInstructor?.codigo ?? null,
+    });
 
     try {
-      const { error } = await supabase.rpc('rpc_set_instructor_profile', {
-        p_instructor_profile_id: selected,
-      });
+      const { data, error } = await supabase.rpc('rpc_update_instructor_profile', rpcPayload);
 
       if (error) {
-        console.warn('[INSTRUCTOR_UX_W1] update_error', { msg: error.message });
-        setSaveError('Não foi possível registrar. Verifique sua conexão e tente novamente.');
+        console.warn('[INSTRUCTOR_SELECT_RPC] error', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        setSaveError(error.message || 'Não foi possível registrar. Tente novamente.');
         setSaving(false);
         return;
       }
 
-      console.log('[INSTRUCTOR_UX_W1] update_success');
+      console.log('[INSTRUCTOR_SELECT_RPC] success', { slug: selected, data });
 
       clearInstructorsCache();
       await refetchProfile();
@@ -71,8 +82,9 @@ export default function OnboardingInstrutor() {
       console.log('[INSTRUCTOR_UX_W1] profile_refetch_done');
       retriggerGate();
     } catch (err: any) {
-      console.warn('[INSTRUCTOR_UX_W1] update_error', { msg: err?.message ?? err });
-      setSaveError('Não foi possível registrar. Verifique sua conexão e tente novamente.');
+      const msg = err?.message ?? String(err);
+      console.warn('[INSTRUCTOR_SELECT_RPC] error', { message: msg });
+      setSaveError(msg || 'Não foi possível registrar. Tente novamente.');
       setSaving(false);
     }
   }

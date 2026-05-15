@@ -142,8 +142,33 @@ export default function InstructorSelectScreen() {
     // 3. Background Update
     if (session) {
       try {
-        const { error } = await supabase.rpc('rpc_set_instructor_profile', {
-          p_instructor_profile_id: selectedInstructor.id,
+        const INSTRUCTOR_CODE_TO_SLUG = {
+          objetivo:    'ramos',
+          estrategico: 'rocha',
+          didatico:    'sara',
+        } as const;
+
+        const instructorSlug =
+          INSTRUCTOR_CODE_TO_SLUG[selectedInstructor.id as keyof typeof INSTRUCTOR_CODE_TO_SLUG];
+
+        if (!instructorSlug) {
+          console.warn('[INSTRUCTOR_INVALID_MAPPING]', { selectedInstructor });
+          return;
+        }
+
+        console.log('[INSTRUCTOR_RPC_CALL]', {
+          selectedInstructor,
+          codigo: selectedInstructor.id,
+          p_instructor_profile_id: instructorSlug,
+        });
+
+        const { data, error } = await supabase.rpc('rpc_update_instructor_profile', {
+          p_instructor_profile_id: instructorSlug,
+        });
+
+        console.log('[INSTRUCTOR_RPC_RESPONSE]', {
+          data,
+          error: error ? { message: error.message, code: error.code } : null,
         });
 
         if (error) {
@@ -152,6 +177,8 @@ export default function InstructorSelectScreen() {
         }
 
         await refetchProfile();
+
+        console.log('[PROFILE_AFTER_REFETCH]', { instructorSlug });
       } catch (err) {
         console.error('Background update failed:', err);
       }

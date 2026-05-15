@@ -145,47 +145,7 @@ function InstrutorMessage({
   );
 }
 
-function EmptyConversationState({
-  instructorName,
-  instructorTitle,
-  glowColor,
-}: {
-  instructorName: string;
-  instructorTitle: string;
-  glowColor: string;
-}) {
-  return (
-    <View style={emptyStyles.root}>
-      <View
-        style={[
-          emptyStyles.card,
-          { backgroundColor: tatico.colors.card, borderColor: tatico.colors.border },
-        ]}
-      >
-        <View style={[emptyStyles.accent, { backgroundColor: glowColor }]} />
-        <Text style={[typographyPresets.label, { color: glowColor, letterSpacing: 1.5 }]}>
-          {instructorTitle.toUpperCase()}
-        </Text>
-        <Text
-          style={[
-            typographyPresets.body,
-            { color: tatico.colors.text, marginTop: spacing.xs },
-          ]}
-        >
-          {instructorName}
-        </Text>
-        <Text
-          style={[
-            typographyPresets.label,
-            { color: tatico.colors.muted, marginTop: spacing.s },
-          ]}
-        >
-          Canal disponível. Envie uma mensagem para iniciar a comunicação.
-        </Text>
-      </View>
-    </View>
-  );
-}
+// EmptyConversationState removido — substituído por mensagem inicial do instrutor
 
 function ProcessingIndicator({ glowColor }: { glowColor: string }) {
   const dotOpacity = useRef(new Animated.Value(0.3)).current;
@@ -660,11 +620,15 @@ export default function ChatScreen() {
             <ActivityIndicator color={glowColor} />
           </View>
         ) : isEmpty ? (
-          <EmptyConversationState
-            instructorName={instructorName}
-            instructorTitle={instructorTitle}
-            glowColor={glowColor}
-          />
+          <View style={welcomeStyles.root}>
+            <SystemMessage text="Início do canal" />
+            <InstrutorMessage
+              text="Canal de comunicação institucional ativo. Estou disponível para orientar sua formação e esclarecer suas dúvidas. Como posso auxiliá-lo?"
+              timestamp={new Date()}
+              instructorName={instructorName}
+              glowColor={glowColor}
+            />
+          </View>
         ) : (
           <FlatList
             ref={flatListRef}
@@ -835,17 +799,15 @@ const processingStyles = StyleSheet.create({
   text: { letterSpacing: 1.5 },
 });
 
-const emptyStyles = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.l },
-  card: {
-    width: '100%',
-    maxWidth: 360,
-    padding: spacing.l,
-    borderRadius: radius.m,
-    borderWidth: 1,
-    gap: spacing.xs,
+const welcomeStyles = StyleSheet.create({
+  // Mensagem inicial posicionada na base — como uma mensagem recém-chegada
+  root: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    padding: spacing.m,
+    paddingBottom: spacing.l,
+    gap: spacing.s,
   },
-  accent: { width: 32, height: 3, borderRadius: 2, marginBottom: spacing.s },
 });
 
 const errorBannerStyles = StyleSheet.create({

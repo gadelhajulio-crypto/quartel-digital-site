@@ -10,11 +10,11 @@ import {
 } from 'react-native';
 import { tatico } from '../../design/themes/tatico';
 
-const AVATAR_SIZE = 62;           // maior: rosto domina o círculo
+const AVATAR_SIZE = 90;            // +22%: rosto domina o círculo
 const RING_SIZE = AVATAR_SIZE + 8; // halo fica atrás do rosto, não compete
 
 type Props = {
-  avatarSource: ImageSourcePropType; // aceita require() e { uri: '...' }
+  avatarSource: ImageSourcePropType | null; // null = sem instrutor selecionado
   glowColor: string;
   onPress: () => void;
   active?: boolean;
@@ -117,7 +117,9 @@ export function InstructorAvatar({ avatarSource, glowColor, onPress, active = fa
           },
         ]}
       >
-        <Image source={avatarSource} style={styles.avatar} resizeMode="cover" />
+        {avatarSource && (
+          <Image source={avatarSource} style={styles.avatar} resizeMode="cover" />
+        )}
       </Animated.View>
 
       {/* Status operacional — indicador diamante */}
@@ -137,7 +139,7 @@ const styles = StyleSheet.create({
     height: RING_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -18,
+    marginTop: -14,
   },
   ring: {
     position: 'absolute',

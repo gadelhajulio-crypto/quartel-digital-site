@@ -73,8 +73,8 @@ export function InstructorSheet({
     }
   }, [visible]);
 
-  const imageSource = instructor.card_selected_url
-    ? { uri: instructor.card_selected_url }
+  const imageSource = instructor.avatar_url
+    ? { uri: instructor.avatar_url }
     : null;
 
   return (
@@ -216,9 +216,9 @@ const styles = StyleSheet.create({
     gap: spacing.m,
   },
   avatarWrap: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 108,
+    height: 108,
+    borderRadius: 54,
     borderWidth: 1.5,
     overflow: 'hidden',
     position: 'relative',

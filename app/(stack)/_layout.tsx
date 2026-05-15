@@ -8,6 +8,9 @@ export default function StackLayout() {
                 headerShown: true,
                 headerBackTitle: '',
             }}
-        />
+        >
+            {/* Seletor de instrutor usa header institucional próprio */}
+            <Stack.Screen name="instructor/select" options={{ headerShown: false }} />
+        </Stack>
     );
 }

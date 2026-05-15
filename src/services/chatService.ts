@@ -140,6 +140,7 @@ export async function loadInstructors(): Promise<InstructorApp[]> {
   const { data, error } = await supabase
     .from('v_instrutores_app')
     .select('*')
+    .eq('ativo', true)
     .order('ordem_exibicao', { ascending: true });
 
   if (error) throw new ChatError('server', error.message);

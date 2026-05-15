@@ -13,9 +13,14 @@ export async function saveInstructorProfile(
         throw new Error('Usuário não autenticado');
     }
 
-    // rpc_set_instructor_profile: SECURITY DEFINER usa auth.uid() internamente
-    const { error } = await supabase.rpc('rpc_set_instructor_profile', {
-        p_instructor_id: instructorId,
+    // rpc_update_instructor_profile: aceita slug canônico (ramos|rocha|sara)
+    console.log('[INSTRUCTOR_RPC_CALL]', {
+        selectedInstructor: instructorId,
+        p_instructor_profile_id: instructorId,
+        source: 'profileService.saveInstructorProfile',
+    });
+    const { error } = await supabase.rpc('rpc_update_instructor_profile', {
+        p_instructor_profile_id: instructorId,
     });
 
     if (error) {
