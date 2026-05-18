@@ -14,27 +14,42 @@ function getHierarchyData(nivel: number) {
     switch (nivel) {
         case 1:
             return {
-                label: 'Recruta',
+                label: 'RECRUTA',
                 icon: require('../assets/hierarchy/recruta.png'),
             };
         case 2:
             return {
-                label: 'Soldado',
+                label: 'ASPIRANTE',
                 icon: require('../assets/hierarchy/aspirante.png'),
             };
         case 3:
             return {
-                label: 'Cabo',
+                label: 'COMBATENTE',
                 icon: require('../assets/hierarchy/combatente.png'),
             };
         case 4:
             return {
-                label: 'Sargento',
+                label: 'VETERANO',
+                icon: require('../assets/hierarchy/veterano.png'),
+            };
+        case 5:
+            return {
+                label: 'COMANDANTE',
+                icon: require('../assets/hierarchy/veterano.png'),
+            };
+        case 6:
+            return {
+                label: 'ESTRATEGISTA',
+                icon: require('../assets/hierarchy/veterano.png'),
+            };
+        case 7:
+            return {
+                label: 'LENDA VIVA',
                 icon: require('../assets/hierarchy/veterano.png'),
             };
         default:
             return {
-                label: 'Hierarquia não definida',
+                label: 'RECRUTA',
                 icon: require('../assets/hierarchy/recruta.png'),
             };
     }

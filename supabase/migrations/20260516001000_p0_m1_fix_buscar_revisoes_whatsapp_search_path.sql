@@ -1,0 +1,129 @@
+-- =============================================================================
+-- Migration:  20260516001000_p0_m1_fix_buscar_revisoes_whatsapp_search_path.sql
+-- Classificação: P0-M1 — Segurança
+-- Data:       2026-05-16
+-- Autor:      institutional-audit-2026-05-16
+-- Revisão:    AGUARDANDO APROVAÇÃO — não executar sem aprovação institucional
+-- =============================================================================
+--
+-- OBJETIVO
+-- --------
+-- Corrigir a vulnerabilidade de search_path hijacking em
+-- public.buscar_revisoes_whatsapp(), que é SECURITY DEFINER sem SET search_path.
+--
+-- Uma função SECURITY DEFINER sem SET search_path fixado executa com o
+-- search_path da sessão chamadora. Se um schema malicioso for inserido antes
+-- de 'public' no search_path, a função pode ser redirecionada para objetos
+-- falsos (tabelas, funções) nesse schema, executando código não autorizado
+-- com os privilégios elevados do DEFINER (postgres).
+--
+-- FONTE DO PROBLEMA
+-- -----------------
+-- Dump remoto, linha 833–847:
+--
+--   CREATE OR REPLACE FUNCTION "public"."buscar_revisoes_whatsapp"()
+--       RETURNS TABLE(...)
+--       LANGUAGE "sql" SECURITY DEFINER
+--       AS $$ ... $$;
+--
+-- Ausência de: SET search_path TO 'public', 'pg_catalog'
+--
+-- IMPACTO ATUAL
+-- -------------
+-- Risco exploitável: BAIXO (grants apenas service_role — não há superfície
+-- de ataque via usuário autenticado do app).
+-- Vulnerabilidade estrutural: ALTA (padrão inseguro para SECURITY DEFINER).
+--
+-- ABORDAGEM
+-- ---------
+-- ALTER FUNCTION — modifica APENAS o atributo search_path da função.
+-- Não altera corpo, assinatura, linguagem, tipo de retorno nem grants.
+-- É atômico, reversível em uma linha e não requer DROP.
+--
+-- ASSINATURA EXATA (extraída do dump, linha 833)
+-- ----------------------------------------------
+-- public.buscar_revisoes_whatsapp()
+-- Sem parâmetros. Retorna TABLE(revisao_id uuid, recruta_id uuid,
+--                               missao_id uuid, forca text)
+--
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- MIGRATION — aplicar SET search_path
+-- -----------------------------------------------------------------------------
+
+ALTER FUNCTION public.buscar_revisoes_whatsapp()
+    SET search_path TO 'public', 'pg_catalog';
+
+-- Reafirmar grants explicitamente (idempotente — garante que nenhuma
+-- alteração de owner ou role acidental durante deploy tenha removido o grant).
+REVOKE ALL ON FUNCTION public.buscar_revisoes_whatsapp() FROM PUBLIC;
+GRANT ALL ON FUNCTION public.buscar_revisoes_whatsapp() TO service_role;
+
+-- =============================================================================
+-- TESTES SQL (executar após apply — NÃO parte da migration)
+-- =============================================================================
+--
+-- TESTE 1 — Confirmar que search_path foi aplicado:
+--
+--   SELECT
+--       proname,
+--       prosecdef,
+--       proconfig
+--   FROM pg_proc p
+--   JOIN pg_namespace n ON n.oid = p.pronamespace
+--   WHERE n.nspname = 'public'
+--     AND p.proname = 'buscar_revisoes_whatsapp';
+--
+--   Resultado esperado:
+--     proname  | buscar_revisoes_whatsapp
+--     prosecdef| true
+--     proconfig| {search_path=public,pg_catalog}
+--
+-- TESTE 2 — Confirmar que grants service_role foram preservados:
+--
+--   SELECT grantee, privilege_type, is_grantable
+--   FROM information_schema.role_routine_grants
+--   WHERE routine_schema = 'public'
+--     AND routine_name   = 'buscar_revisoes_whatsapp';
+--
+--   Resultado esperado:
+--     grantee      | privilege_type | is_grantable
+--     service_role | EXECUTE        | NO
+--
+-- TESTE 3 — Confirmar que comportamento da função não mudou (chamar como service_role):
+--
+--   SELECT * FROM public.buscar_revisoes_whatsapp() LIMIT 1;
+--
+--   Resultado esperado: mesmos dados que antes (ou zero linhas se não houver revisões
+--   whatsapp pendentes — sem erro de permissão ou schema).
+--
+-- TESTE 4 — Confirmar que PUBLIC não tem EXECUTE (deve retornar zero linhas):
+--
+--   SELECT grantee FROM information_schema.role_routine_grants
+--   WHERE routine_name = 'buscar_revisoes_whatsapp'
+--     AND grantee = 'PUBLIC';
+--
+--   Resultado esperado: zero linhas.
+--
+-- =============================================================================
+-- ROLLBACK (executar APENAS se a migration precisar ser revertida)
+-- =============================================================================
+--
+-- ALTER FUNCTION public.buscar_revisoes_whatsapp() RESET search_path;
+--
+-- Verificar após rollback:
+--   SELECT proconfig FROM pg_proc
+--   JOIN pg_namespace n ON n.oid = pronamespace
+--   WHERE nspname = 'public' AND proname = 'buscar_revisoes_whatsapp';
+--   Esperado: proconfig = NULL (search_path removido, volta ao comportamento original)
+--
+-- =============================================================================
+-- REFERÊNCIAS
+-- =============================================================================
+-- Dump remoto:              supabase/remote/supabase_remote_schema.sql ln 833–850
+-- Auditoria:                supabase/baseline/SECURITY_DEFINER_AUDIT.md
+-- Risk matrix:              supabase_risk_matrix.md (SEC-03)
+-- Pacote de decisão P0:     supabase/baseline/P0_DECISION_PACKET.md §4 / P0-M1
+-- Handoff:                  supabase/baseline/P0_M1_HANDOFF.md
+-- =============================================================================

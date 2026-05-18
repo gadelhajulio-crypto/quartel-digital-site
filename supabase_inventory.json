@@ -1,0 +1,532 @@
+{
+  "meta": {
+    "project_ref": "fjwvtzvfbhubxicsmbdz",
+    "audit_date": "2026-05-16",
+    "source": "local_migrations + app_source_code",
+    "note": "Dados derivados exclusivamente de leitura de arquivos locais. Banco remoto pode ter divergências."
+  },
+  "schemas": ["public", "auth", "storage"],
+  "extensions": [
+    { "name": "uuid-ossp", "migration": "20260427214001", "usage": "uuid_generate_v4()" },
+    { "name": "pgcrypto", "migration": "presumida", "usage": "gen_random_uuid()" }
+  ],
+  "tables": {
+    "with_ddl_local": [
+      {
+        "name": "xp_eventos",
+        "schema": "public",
+        "migration": "20240114220000",
+        "rls": true,
+        "columns": ["id", "user_id", "amount", "description", "source_id", "created_at", "recruta_id(alias)", "xp(alias)"],
+        "pk": "id",
+        "fk": ["user_id -> auth.users(id)"],
+        "indexes": ["idx_xp_eventos_recruta_id"],
+        "triggers": ["trg_sync_xp_evento_aliases"],
+        "notes": "Colunas duplas: user_id/amount originais + recruta_id/xp aliases"
+      },
+      {
+        "name": "modulos",
+        "schema": "public",
+        "migration": "20240114223000",
+        "rls": true,
+        "columns": ["id", "title", "description", "order", "forca", "created_at"],
+        "pk": "id",
+        "check_constraints": ["forca IN ('navy','army','airforce') -- legado, atualizado para PT em recrutas mas modulos mantém legado"]
+      },
+      {
+        "name": "aulas",
+        "schema": "public",
+        "migration": "20240114223000",
+        "rls": true,
+        "columns": ["id", "module_id(legado)/modulo_id(canônico)", "title/titulo(renomeado)", "type", "url", "xp", "order/ordem(renomeado)", "created_at"],
+        "pk": "id",
+        "fk": ["modulo_id -> modulos(id) ON DELETE CASCADE"],
+        "notes": "DIVERGÊNCIA: migration usa module_id, v_lessons_panel usa modulo_id — coluna renomeada no remoto"
+      },
+      {
+        "name": "recruta_progresso",
+        "schema": "public",
+        "migration": "20260201221400",
+        "rls": true,
+        "columns": ["id", "recruta_id", "lesson_id", "status", "completed_at", "xp_granted", "source", "created_at"],
+        "pk": "id",
+        "fk": ["recruta_id -> recrutas(id) ON DELETE CASCADE", "lesson_id -> aulas(id) ON DELETE CASCADE"],
+        "unique": ["(recruta_id, lesson_id)"],
+        "check_constraints": ["status IN ('completed')"]
+      },
+      {
+        "name": "medalhas",
+        "schema": "public",
+        "migration": "20260202123000",
+        "rls": true,
+        "columns": ["id", "codigo", "nome", "descricao", "icone_url", "ativo", "created_at"],
+        "pk": "id",
+        "unique": ["codigo"]
+      },
+      {
+        "name": "medalha_regras",
+        "schema": "public",
+        "migration": "20260202123000",
+        "rls": true,
+        "columns": ["id", "medalha_id", "metrica", "operador", "valor", "created_at"],
+        "pk": "id",
+        "fk": ["medalha_id -> medalhas(id) ON DELETE CASCADE"]
+      },
+      {
+        "name": "recruta_medalhas",
+        "schema": "public",
+        "migration": "20260202123000",
+        "rls": true,
+        "columns": ["id", "recruta_id", "medalha_id", "concedido_em"],
+        "pk": "id",
+        "fk": ["recruta_id -> recrutas(id) ON DELETE CASCADE", "medalha_id -> medalhas(id) ON DELETE CASCADE"],
+        "unique": ["(recruta_id, medalha_id)"]
+      },
+      {
+        "name": "patentes_catalogo",
+        "schema": "public",
+        "migration": "20260202183000",
+        "rls": true,
+        "columns": ["id", "codigo", "titulo", "nivel", "descricao", "icone_url", "ativo", "created_at"],
+        "pk": "id",
+        "unique": ["codigo", "(nivel, codigo)"]
+      },
+      {
+        "name": "patente_regras",
+        "schema": "public",
+        "migration": "20260202183000",
+        "rls": true,
+        "columns": ["id", "patente_id", "metrica", "operador", "valor", "created_at"],
+        "pk": "id",
+        "fk": ["patente_id -> patentes_catalogo(id) ON DELETE CASCADE"]
+      },
+      {
+        "name": "recruta_patentes",
+        "schema": "public",
+        "migration": "20260202183000",
+        "rls": true,
+        "columns": ["id", "recruta_id", "patente_id", "promovido_em", "motivo", "created_at"],
+        "pk": "id",
+        "fk": ["recruta_id -> recrutas(id) ON DELETE CASCADE", "patente_id -> patentes_catalogo(id) ON DELETE CASCADE"]
+      },
+      {
+        "name": "c9_aula_conteudos",
+        "schema": "public",
+        "migration": "20260427214001",
+        "rls": true,
+        "columns": ["id", "aula_id", "conteudo", "ativo", "deleted_at", "created_by", "created_at", "updated_at"],
+        "pk": "id",
+        "fk": ["aula_id -> aulas(id) ON DELETE CASCADE", "created_by -> auth.users(id)"],
+        "indexes": ["c9_idx_unique_conteudo_ativo (partial: ativo=true AND deleted_at IS NULL)", "c9_idx_conteudos_aula"],
+        "triggers": ["set_c9_aula_conteudos_updated_at"]
+      },
+      {
+        "name": "c9_aula_flashcards",
+        "schema": "public",
+        "migration": "20260427214001",
+        "rls": true,
+        "columns": ["id", "aula_id", "frente", "verso", "ordem", "ativo", "deleted_at", "created_by", "created_at", "updated_at"],
+        "pk": "id",
+        "fk": ["aula_id -> aulas(id) ON DELETE CASCADE", "created_by -> auth.users(id)"],
+        "indexes": ["c9_idx_flashcards_aula"]
+      },
+      {
+        "name": "c9_aula_quizzes",
+        "schema": "public",
+        "migration": "20260427214001",
+        "rls": true,
+        "columns": ["id", "aula_id", "titulo", "descricao", "ativo", "deleted_at", "created_by", "created_at", "updated_at"],
+        "pk": "id",
+        "fk": ["aula_id -> aulas(id) ON DELETE CASCADE", "created_by -> auth.users(id)"],
+        "indexes": ["c9_idx_unique_quiz_ativo (partial)", "c9_idx_quizzes_aula"],
+        "triggers": ["set_c9_aula_quizzes_updated_at"]
+      },
+      {
+        "name": "c9_aula_quiz_perguntas",
+        "schema": "public",
+        "migration": "20260427214001",
+        "rls": true,
+        "columns": ["id", "quiz_id", "pergunta", "explicacao", "ordem", "ativo", "deleted_at", "created_by", "created_at", "updated_at"],
+        "pk": "id",
+        "fk": ["quiz_id -> c9_aula_quizzes(id) ON DELETE CASCADE", "created_by -> auth.users(id)"],
+        "indexes": ["c9_idx_perguntas_quiz"]
+      },
+      {
+        "name": "c9_aula_quiz_alternativas",
+        "schema": "public",
+        "migration": "20260427214001",
+        "rls": true,
+        "columns": ["id", "pergunta_id", "texto", "is_correta", "ordem", "ativo", "deleted_at", "created_by", "created_at", "updated_at"],
+        "pk": "id",
+        "fk": ["pergunta_id -> c9_aula_quiz_perguntas(id) ON DELETE CASCADE", "created_by -> auth.users(id)"],
+        "indexes": ["c9_idx_alternativas_pergunta"]
+      },
+      {
+        "name": "c9_aula_quiz_tentativas",
+        "schema": "public",
+        "migration": "20260427214001",
+        "rls": true,
+        "columns": ["id", "quiz_id", "recruta_id", "pontuacao", "respostas_jsonb", "sucesso", "created_at"],
+        "pk": "id",
+        "fk": ["quiz_id -> c9_aula_quizzes(id) ON DELETE CASCADE", "recruta_id -> auth.users(id) -- INCONSISTÊNCIA: deveria ser recrutas(id)"],
+        "indexes": ["c9_idx_tentativas_recruta"],
+        "security_note": "recruta_id referencia auth.users em vez de recrutas — inconsistência"
+      },
+      {
+        "name": "auth_app_config",
+        "schema": "public",
+        "migration": "20260503003000",
+        "rls": true,
+        "columns": ["key", "value", "updated_at"],
+        "pk": "key",
+        "seed": "auth_contract_version=RCC-0.3"
+      },
+      {
+        "name": "auth_client_sessions",
+        "schema": "public",
+        "migration": "20260503003000",
+        "rls": true,
+        "columns": ["id", "user_id", "client_instance_id", "device_name", "is_active", "last_seen_at", "session_revoked_reason", "requires_mfa", "account_locked", "inactive_user", "password_expired", "created_at", "updated_at"],
+        "pk": "id",
+        "fk": ["user_id -> auth.users(id) ON DELETE CASCADE"],
+        "unique": ["(user_id, client_instance_id)"],
+        "indexes": ["idx_auth_client_sessions_user", "idx_auth_client_sessions_instance"],
+        "triggers": ["trg_auth_session_updated_at"]
+      },
+      {
+        "name": "aula_midias",
+        "schema": "public",
+        "migration": "20260503005000",
+        "rls": true,
+        "columns": ["id", "aula_id", "type", "url", "is_review", "ativo", "ordem", "created_at"],
+        "pk": "id",
+        "fk": ["aula_id -> aulas(id) ON DELETE CASCADE"],
+        "indexes": ["idx_aula_midias_aula", "idx_aula_midias_review (partial: is_review=true)"]
+      },
+      {
+        "name": "institutional_notices",
+        "schema": "public",
+        "migration": "20260503006000",
+        "rls": true,
+        "columns": ["id", "title", "body", "priority", "deep_link", "target_forca", "ativo", "created_at", "expires_at"],
+        "pk": "id",
+        "indexes": ["idx_institutional_notices_ativo (partial: ativo=true)"]
+      },
+      {
+        "name": "institutional_notice_reads",
+        "schema": "public",
+        "migration": "20260503006000",
+        "rls": true,
+        "columns": ["id", "notice_id", "recruta_id", "read_at"],
+        "pk": "id",
+        "fk": ["notice_id -> institutional_notices(id) ON DELETE CASCADE", "recruta_id -> recrutas(id) ON DELETE CASCADE"],
+        "unique": ["(notice_id, recruta_id)"],
+        "indexes": ["idx_notice_reads_recruta"]
+      },
+      {
+        "name": "instructor_messages",
+        "schema": "public",
+        "migration": "20260503006000",
+        "rls": true,
+        "columns": ["id", "recruta_id", "instructor_profile_id", "title", "body", "deep_link", "ativo", "created_at"],
+        "pk": "id",
+        "fk": ["recruta_id -> recrutas(id) ON DELETE CASCADE"],
+        "check_constraints": ["instructor_profile_id IN ('objetivo','estrategico','didatico')"],
+        "indexes": ["idx_instructor_messages_recruta"]
+      },
+      {
+        "name": "instructor_message_reads",
+        "schema": "public",
+        "migration": "20260503006000",
+        "rls": true,
+        "columns": ["id", "message_id", "recruta_id", "read_at"],
+        "pk": "id",
+        "fk": ["message_id -> instructor_messages(id) ON DELETE CASCADE", "recruta_id -> recrutas(id) ON DELETE CASCADE"],
+        "unique": ["(message_id, recruta_id)"]
+      },
+      {
+        "name": "recruta_billing",
+        "schema": "public",
+        "migration": "20260503007000",
+        "rls": true,
+        "columns": ["id", "recruta_id", "acesso_liberado", "plano_atual", "status_assinatura", "validade", "trial_restante", "stripe_customer_id", "stripe_session_id", "updated_at"],
+        "pk": "id",
+        "fk": ["recruta_id -> recrutas(id) ON DELETE CASCADE"],
+        "unique": ["recruta_id"],
+        "indexes": ["idx_recruta_billing_recruta"],
+        "triggers": ["trg_billing_updated_at"]
+      },
+      {
+        "name": "c5_eventos",
+        "schema": "public",
+        "migration": "20260503008000",
+        "rls": true,
+        "columns": ["id", "recruta_id", "tipo", "referencia_id", "titulo", "descricao", "prioridade", "cycle_id", "processado", "emitido_em", "processado_em"],
+        "pk": "id",
+        "fk": ["recruta_id -> recrutas(id) ON DELETE CASCADE (nullable)"],
+        "indexes": ["idx_c5_eventos_recruta", "idx_c5_eventos_pendentes (partial: processado=false)"]
+      },
+      {
+        "name": "recruta_iea",
+        "schema": "public",
+        "migration": "20260503009000",
+        "rls": true,
+        "columns": ["id", "recruta_id", "ciclo_id", "score", "concept", "updated_at"],
+        "pk": "id",
+        "fk": ["recruta_id -> recrutas(id) ON DELETE CASCADE"],
+        "unique": ["(recruta_id, ciclo_id)"],
+        "indexes": ["idx_recruta_iea_recruta"]
+      },
+      {
+        "name": "ciclo_classificacao",
+        "schema": "public",
+        "migration": "20260503009000",
+        "rls": true,
+        "columns": ["id", "recruta_id", "ciclo_id", "iea_score", "xp_normalizado", "score_final", "status_regularidade", "regularidade_percentual", "hierarquia_atual", "elegivel_elite", "motivos_negacao", "created_at", "updated_at"],
+        "pk": "id",
+        "fk": ["recruta_id -> recrutas(id) ON DELETE CASCADE"],
+        "unique": ["(recruta_id, ciclo_id)"],
+        "indexes": ["idx_ciclo_class_recruta"],
+        "notes": "Preenchida por processo externo — não pelo frontend"
+      },
+      {
+        "name": "chat_audit_log",
+        "schema": "public",
+        "migration": "20260120170000",
+        "rls": true,
+        "columns": ["audit_id", "session_id", "timestamp_utc", "user_id", "recruta_id", "force", "instructor_profile_id", "access_mode", "interaction_type", "response_category", "source", "agent", "metadata"],
+        "pk": "audit_id",
+        "indexes": ["idx_chat_audit_user", "idx_chat_audit_timestamp", "idx_chat_audit_recruta"],
+        "security_note": "Apenas service_role pode acessar. Trigger de insert via v_audit_eventos é INVOKER — BUG"
+      }
+    ],
+    "without_ddl_local": [
+      {
+        "name": "recrutas",
+        "schema": "public",
+        "known_columns": ["id (= auth.uid())", "auth_id", "email", "nome", "nome_guerra", "forca", "xp", "xp_total", "avatar_url", "tipo_acesso", "onboarding_concluido", "ativo", "created_at"],
+        "evidence": "ALTER TABLE, INSERT, UPDATE, REFERENCES em várias migrations",
+        "risk": "CRITICAL"
+      },
+      {
+        "name": "profiles",
+        "schema": "public",
+        "known_columns": ["id (= auth.uid())", "instructor_profile_id", "forca", "ativo", "tipo_acesso"],
+        "evidence": "ALTER TABLE (constraints, policies), JOINs em views/funções",
+        "risk": "CRITICAL"
+      },
+      {
+        "name": "recruta_modulos",
+        "schema": "public",
+        "known_columns": ["recruta_id", "modulo_id", "status", "first_access_at", "completed_at", "data_liberacao"],
+        "evidence": "INSERT/UPDATE em RPCs, função verificar_liberacao_total",
+        "risk": "HIGH"
+      },
+      {
+        "name": "instrutores",
+        "schema": "public",
+        "known_columns": ["slug", "codigo", "nome", "titulo", "descricao", "ativo", "ordem_exibicao", "avatar_asset_tipo", "chat_icon_asset_tipo", "whatsapp_asset_tipo", "card_selected_asset_tipo", "card_idle_asset_tipo"],
+        "evidence": "DELETE/INSERT em 20260511120000, GRANT em 20260511130000, rpc_update_instructor_profile",
+        "risk": "HIGH"
+      },
+      {
+        "name": "institutional_assets",
+        "schema": "public",
+        "known_columns": ["tipo", "url", "forca", "versao", "ativo", "checksum", "cache_policy"],
+        "evidence": "DELETE/INSERT em 20260511120000, GRANT em 20260511130000",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  "views": {
+    "with_ddl_local": [
+      "v_identidade_recruta",
+      "v_auth_app_config",
+      "v_auth_session",
+      "v_auth_active_sessions",
+      "v_onboarding_status",
+      "v_app_bootstrap_institucional",
+      "v_lessons_panel",
+      "v_lesson_progress_panel",
+      "v_completed_lessons_count",
+      "vw_rdm_lessons",
+      "vw_recruta_module_progress",
+      "v_available_reviews",
+      "v_review_content",
+      "v_institutional_notices",
+      "v_instructor_messages",
+      "v_billing_status_recruta",
+      "v_eventos_pendentes",
+      "v_iea_atual",
+      "v_iea_audit",
+      "v_classificacao_final_ciclo",
+      "v_elegibilidade_elite",
+      "v_medals_status",
+      "v_historico_atividade_recruta",
+      "v_historico_progresso_recruta",
+      "v_ranking_global",
+      "v_ranking_force",
+      "v_recruta_patente_atual",
+      "v_historico_patentes",
+      "v_recruta_medalhas",
+      "public_recrutas_padrao",
+      "v_audit_eventos",
+      "v_lesson_detail_panel",
+      "v_lesson_media_panel",
+      "v_review_panel",
+      "vw_ranking_mensal",
+      "vw_posicao_recruta_mes"
+    ],
+    "without_ddl_local": [
+      "vw_rdm_lessons_v2",
+      "vw_recruta_module_progress_v2",
+      "v_billing_status_recruta_v2",
+      "v_iea_atual_v2",
+      "v_elegibilidade_elite_v2",
+      "v_classificacao_final_ciclo_v2",
+      "v_app_bootstrap_institucional_rcc",
+      "v_chat_conversas_recruta",
+      "v_chat_mensagens_recruta",
+      "v_chat_unread_status",
+      "v_instrutores_app"
+    ]
+  },
+  "materialized_views": [
+    {
+      "name": "mv_xp_mensal_recruta",
+      "migration": "20260503001000",
+      "columns": ["recruta_id", "forca", "month_ref", "xp_mensal"],
+      "unique_index": "(recruta_id, forca, month_ref)",
+      "refresh_scheduled": false
+    },
+    {
+      "name": "mv_ranking_mensal",
+      "migration": "20260503001000",
+      "columns": ["recruta_id", "forca", "month_ref", "xp_mensal", "rank_position"],
+      "unique_index": "(recruta_id, forca, month_ref)",
+      "refresh_scheduled": false
+    },
+    {
+      "name": "mv_campeao_mensal",
+      "migration": "20260503001000",
+      "columns": ["recruta_id", "forca", "month_ref"],
+      "unique_index": "(forca, month_ref)",
+      "refresh_scheduled": false
+    }
+  ],
+  "functions": {
+    "with_ddl_local": [
+      { "name": "check_total_release", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20240114185500" },
+      { "name": "verificar_liberacao_total", "security": "DEFINER", "search_path": false, "idempotent": false, "migration": "20240114214500", "status": "legada/broken" },
+      { "name": "registrar_xp", "security": "DEFINER", "search_path": false, "idempotent": false, "migration": "20240114220000", "risk": "HIGH" },
+      { "name": "module_progress", "security": "INVOKER", "idempotent": true, "migration": "20240116140000", "status": "legada/broken (tabelas legadas)" },
+      { "name": "recruta_progresso_geral", "security": "INVOKER", "idempotent": true, "migration": "20240116145000" },
+      { "name": "get_student_next_lesson", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260503012000 (fix)" },
+      { "name": "fn_insert_audit_evento", "security": "INVOKER", "migration": "20260120220000", "status": "obsoleta" },
+      { "name": "fn_insert_audit_evento_smart", "security": "INVOKER", "migration": "20260120220000", "risk": "HIGH", "note": "Não SECURITY DEFINER — falha ao inserir em chat_audit_log" },
+      { "name": "grant_medal", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260202123000" },
+      { "name": "promover_recruta", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260202183000" },
+      { "name": "complete_lesson", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260201221400", "risk": "CRITICAL", "note": "Aceita p_recruta_id externo" },
+      { "name": "rpc_auth_claim_active_client_session", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260503003000" },
+      { "name": "rpc_auth_resolve_session_state", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260503003000" },
+      { "name": "rpc_auth_revoke_client_session", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260503003000" },
+      { "name": "rpc_complete_onboarding", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260509001000" },
+      { "name": "rpc_set_instructor_profile", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260503011000" },
+      { "name": "rpc_update_instructor_profile", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260513002000" },
+      { "name": "rpc_start_module", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260503011000" },
+      { "name": "rpc_complete_module", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260503011000" },
+      { "name": "rpc_mark_notice_read", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260503006000" },
+      { "name": "rpc_mark_instructor_message_read", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260503006000" },
+      { "name": "consumir_evento_c5", "security": "DEFINER", "search_path": false, "idempotent": true, "migration": "20260503008000" },
+      { "name": "c9_update_updated_at_column", "security": "INVOKER", "migration": "20260427214001" },
+      { "name": "fn_auth_session_updated_at", "security": "INVOKER", "migration": "20260503003000" },
+      { "name": "fn_billing_updated_at", "security": "INVOKER", "migration": "20260503007000" },
+      { "name": "fn_sync_xp_evento_aliases", "security": "INVOKER", "migration": "20260503001000" }
+    ],
+    "without_ddl_local": [
+      { "name": "rpc_chat_open_conversation", "params": "p_instrutor_slug TEXT", "consumer": "chatService" },
+      { "name": "rpc_chat_send_message", "params": "p_instrutor_slug, p_client_message_id, p_user_text, p_assistant_text, p_correlation_id, p_metadata", "consumer": "instrutor-send Edge Function" },
+      { "name": "rpc_chat_mark_read", "params": "p_conversa_id TEXT", "consumer": "chatService" }
+    ]
+  },
+  "triggers": [
+    { "name": "trg_insert_audit", "table": "v_audit_eventos", "event": "INSERT", "timing": "INSTEAD OF", "function": "fn_insert_audit_evento_smart", "risk": "HIGH" },
+    { "name": "trg_sync_xp_evento_aliases", "table": "xp_eventos", "event": "INSERT OR UPDATE", "timing": "BEFORE", "function": "fn_sync_xp_evento_aliases" },
+    { "name": "trg_auth_session_updated_at", "table": "auth_client_sessions", "event": "UPDATE", "timing": "BEFORE", "function": "fn_auth_session_updated_at" },
+    { "name": "trg_billing_updated_at", "table": "recruta_billing", "event": "UPDATE", "timing": "BEFORE", "function": "fn_billing_updated_at" },
+    { "name": "set_c9_aula_conteudos_updated_at", "table": "c9_aula_conteudos", "event": "UPDATE", "timing": "BEFORE", "function": "c9_update_updated_at_column" },
+    { "name": "set_c9_aula_quizzes_updated_at", "table": "c9_aula_quizzes", "event": "UPDATE", "timing": "BEFORE", "function": "c9_update_updated_at_column" }
+  ],
+  "edge_functions": [
+    {
+      "name": "instrutor-send",
+      "verify_jwt": true,
+      "caller": "app (supabase.functions.invoke)",
+      "reads": ["v_identidade_recruta"],
+      "writes_via_rpc": ["rpc_chat_send_message"],
+      "calls": ["chat-central (via HTTP + HMAC)"],
+      "env_vars": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "QD_HMAC_SECRET"]
+    },
+    {
+      "name": "chat-central",
+      "verify_jwt": false,
+      "security": "HMAC SHA-256 com QD_HMAC_SECRET + timestamp anti-replay (5min skew)",
+      "caller": "instrutor-send only",
+      "reads": [],
+      "writes": [],
+      "calls": ["OpenAI Assistants API"],
+      "openai_agents": {
+        "marinha": "asst_6TFPlmsULj3fpxArwlkO16nL",
+        "exercito": "asst_PL5I6dwKRvHuw6cyy2cNVXHp",
+        "aeronautica": "asst_0FpXW9zHkPDVBoIuL5fRi6hX"
+      },
+      "env_vars": ["QD_HMAC_SECRET", "OPENAI_API_KEY"]
+    },
+    {
+      "name": "stripe-create-checkout-session",
+      "verify_jwt": true,
+      "caller": "app (billingService)",
+      "reads": ["v_identidade_recruta", "auth.admin.getUserById"],
+      "writes": ["Stripe API"],
+      "mode": "payment (não subscription)",
+      "env_vars": ["STRIPE_SECRET_KEY", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "STRIPE_SUCCESS_URL", "STRIPE_CANCEL_URL", "STRIPE_PRICE_ID_MENSAL", "STRIPE_PRICE_ID_ANUAL"]
+    }
+  ],
+  "storage_buckets": [
+    {
+      "name": "avatars",
+      "ddl_local": true,
+      "migration": "20240114221000",
+      "public": true,
+      "policies": ["SELECT (all)", "INSERT (owner by folder)", "UPDATE (owner by folder)"]
+    },
+    {
+      "name": "institutional-assets",
+      "ddl_local": false,
+      "public": true,
+      "policies": "desconhecido — sem migration local",
+      "contents": "avatares, cards, chat icons, whatsapp icons dos instrutores (ramos, rocha, sara)"
+    }
+  ],
+  "rls_summary": {
+    "tables_with_rls": [
+      "xp_eventos", "modulos", "aulas", "recruta_progresso", "medalhas", "medalha_regras",
+      "recruta_medalhas", "patentes_catalogo", "patente_regras", "recruta_patentes",
+      "c9_aula_conteudos", "c9_aula_flashcards", "c9_aula_quizzes", "c9_aula_quiz_perguntas",
+      "c9_aula_quiz_alternativas", "c9_aula_quiz_tentativas", "auth_app_config",
+      "auth_client_sessions", "aula_midias", "institutional_notices", "institutional_notice_reads",
+      "instructor_messages", "instructor_message_reads", "recruta_billing", "c5_eventos",
+      "recruta_iea", "ciclo_classificacao", "chat_audit_log"
+    ],
+    "tables_without_rls_local": [
+      "recrutas (RLS via migration enable mas sem DDL local)",
+      "profiles (idem)",
+      "recruta_modulos (sem DDL)",
+      "instrutores (sem RLS local — GRANT TO authenticated/anon)",
+      "institutional_assets (idem)",
+      "mv_xp_mensal_recruta (MV — RLS não aplicável diretamente)",
+      "mv_ranking_mensal",
+      "mv_campeao_mensal"
+    ]
+  }
+}

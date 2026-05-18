@@ -1,5 +1,5 @@
 // RCC-0.5 / Wave 2 — Seletor 3D de Instrutor (Deck Empilhado)
-// Layout: 1 card central flutuante na frente + 2 cards idle atrás/embaixo.
+// Layout: 1 card central flutuante na frente + 2 cards atrás/embaixo.
 // Gesto: swipe horizontal → card de trás sobe para frente, central desce.
 // Sem ScrollView. Sem duplicação de array. Apenas 3 cards reais.
 // Persistência: rpc_update_instructor_profile(p_instructor_profile_id=slug).
@@ -56,59 +56,45 @@ const VELOCITY_THRESHOLD = 0.4;
 
 // ── Assets locais (bundled) ───────────────────────────────────────────────────
 // require() = imediato, sem rede, sem skeleton infinito.
-// Mapeado por slug canônico (ramos/rocha/sara) × variante (selected/idle).
+// Mapeado por slug canônico (ramos/rocha/sara). Um único asset por instrutor.
+// Fonte canônica para o deck — qualquer outro require de card deve referenciar
+// este mapa, não duplicar o path.
+//
+// NOTE:
+// ramos-card-selected.png possui margem interna no próprio canvas.
+// Qualquer gap visual deve ser corrigido no asset export,
+// não no layout do carousel.
 const CARD_ASSETS = {
-  ramos: {
-    selected: require('../../../assets/instructors/cards/ramos-card-selected.png'),
-    idle:     require('../../../assets/instructors/cards/ramos-card-idle.png'),
-  },
-  rocha: {
-    selected: require('../../../assets/instructors/cards/rocha-card-selected.png'),
-    idle:     require('../../../assets/instructors/cards/rocha-card-idle.png'),
-  },
-  sara: {
-    selected: require('../../../assets/instructors/cards/sara-card-selected.png'),
-    idle:     require('../../../assets/instructors/cards/sara-card-idle.png'),
-  },
+  ramos: require('../../../assets/instructors/cards/ramos-card-selected.png'),
+  rocha: require('../../../assets/instructors/cards/rocha-card-selected.png'),
+  sara:  require('../../../assets/instructors/cards/sara-card-selected.png'),
 } as const;
 
-// ── InstructorCardImage ──────────────────────────────────────────────────────
-// source={require(...)} — asset local, zero latência de rede.
-// Skeleton apenas se slug desconhecido (fallback seguro).
-type CardImageProps = {
-  slug: string;
-  variant: 'idle' | 'selected';
-  slot: 'center' | 'left' | 'right';
-};
+// ── SlotImages ───────────────────────────────────────────────────────────────
+// Pré-monta 3 imagens (uma por instrutor) para cada slot.
+// Somente o instrutor ativo tem opacity:1; os demais ficam opacity:0.
+// Trocar de instrutor = toggle de opacidade em imagem já carregada → zero flash.
+// Nunca desmonta, nunca troca source, nunca retorna null.
+const SLUGS = ['ramos', 'rocha', 'sara'] as const;
 
-function InstructorCardImage({ slug, variant, slot }: CardImageProps) {
-  const assets = CARD_ASSETS[slug as keyof typeof CARD_ASSETS];
-  const source = assets ? (variant === 'selected' ? assets.selected : assets.idle) : null;
-
-  // Log apenas quando source mudar (diagnóstico de flash)
-  console.log('[INSTRUCTOR_CARD_SOURCE]', { slot, slug, variant, hasSource: !!source });
-
-  if (!source) {
-    // Slug desconhecido: loga mas não mostra skeleton durante animação.
-    // Nunca deve acontecer em produção (slugs vêm de CARD_ASSETS).
-    console.warn('[INSTRUCTOR_CARD_SOURCE] missing asset for slug:', slug);
-    return <View style={cardImageStyles.skeleton} />;
-  }
-
+function SlotImages({ activeSlug }: { activeSlug: string }) {
   return (
-    <Image
-      source={source}
-      style={cardImageStyles.fill}
-      resizeMode="stretch"
-      fadeDuration={0}
-    />
+    <>
+      {SLUGS.map((slug) => (
+        <Image
+          key={slug}
+          source={CARD_ASSETS[slug]}
+          style={[
+            StyleSheet.absoluteFillObject,
+            { width: POSTER_WIDTH, height: POSTER_HEIGHT, opacity: slug === activeSlug ? 1 : 0 },
+          ]}
+          resizeMode="contain"
+          fadeDuration={0}
+        />
+      ))}
+    </>
   );
 }
-
-const cardImageStyles = StyleSheet.create({
-  fill: { width: '100%', height: '100%' },
-  skeleton: { width: '100%', height: '100%', backgroundColor: '#0d1520' },
-});
 
 // ── Screen ───────────────────────────────────────────────────────────────────
 type UxState = 'idle' | 'saving' | 'error';
@@ -123,7 +109,7 @@ export default function SelectInstructorScreen() {
   useEffect(() => {
     console.log('[INSTRUCTOR_SELECT_RENDERED]', {
       route: 'app/(stack)/instructor/select.tsx',
-      version: 'final-ratio-fix-v1',
+      version: 'no-idle-v1',
       POSTER_RATIO: (1122 / 1402).toFixed(4),
     });
   }, []);
@@ -321,24 +307,20 @@ export default function SelectInstructorScreen() {
 
         if (goNext && NRef.current > 1) {
           springTo(-TRANSITION_PX, () => {
-            // setCenterIndex primeiro, depois reset no próximo frame via rAF:
-            // permite que React comite o novo índice antes de resetar swipeX,
-            // reduzindo o flash do instrutor anterior na posição central.
+            // Ordem: atualizar centerIndex → resetar swipeX no mesmo bloco síncrono.
+            // Com imagens pré-montadas, a troca é toggle de opacidade (zero flash).
+            // setValue(0) após setState garante que o React render vê swipeX=0.
             setCenterIndex((prev) => (prev + 1) % NRef.current);
-            requestAnimationFrame(() => {
-              swipeX.setValue(0);
-              dragDirRef.current = null;
-              setDragDir(null);
-            });
+            dragDirRef.current = null;
+            setDragDir(null);
+            swipeX.setValue(0);
           });
         } else if (goPrev && NRef.current > 1) {
           springTo(TRANSITION_PX, () => {
             setCenterIndex((prev) => (prev - 1 + NRef.current) % NRef.current);
-            requestAnimationFrame(() => {
-              swipeX.setValue(0);
-              dragDirRef.current = null;
-              setDragDir(null);
-            });
+            dragDirRef.current = null;
+            setDragDir(null);
+            swipeX.setValue(0);
           });
         } else {
           springTo(0, () => {
@@ -551,13 +533,13 @@ export default function SelectInstructorScreen() {
           {/* Área do deck — captura gestos */}
           <View style={styles.deckArea} {...panResponder.panHandlers}>
 
-            {/* Card esquerdo (back-left, idle) */}
+            {/* Card esquerdo (back-left) */}
             {leftInstructor && (
               <Animated.View
+                key="slot-left"
                 style={[
                   styles.card,
                   {
-                    borderColor: tatico.colors.border,
                     zIndex: slotZIndex('left'),
                     transform: [
                       { translateX: leftTransX },
@@ -569,22 +551,17 @@ export default function SelectInstructorScreen() {
                   },
                 ]}
               >
-                <InstructorCardImage
-                  key="slot-left"
-                  slug={leftInstructor.slug}
-                  variant="idle"
-                  slot="left"
-                />
+                <SlotImages activeSlug={leftInstructor.slug} />
               </Animated.View>
             )}
 
-            {/* Card direito (back-right, idle) */}
+            {/* Card direito (back-right) */}
             {rightInstructor && (
               <Animated.View
+                key="slot-right"
                 style={[
                   styles.card,
                   {
-                    borderColor: tatico.colors.border,
                     zIndex: slotZIndex('right'),
                     transform: [
                       { translateX: rightTransX },
@@ -596,23 +573,17 @@ export default function SelectInstructorScreen() {
                   },
                 ]}
               >
-                <InstructorCardImage
-                  key="slot-right"
-                  slug={rightInstructor.slug}
-                  variant="idle"
-                  slot="right"
-                />
+                <SlotImages activeSlug={rightInstructor.slug} />
               </Animated.View>
             )}
 
             {/* Card central (frente, selected) */}
             {centerInstructor && (
               <Animated.View
+                key="slot-center"
                 style={[
                   styles.card,
                   {
-                    borderColor: tatico.colors.accent,
-                    borderWidth: 2,
                     zIndex: slotZIndex('center'),
                     transform: [
                       { translateX: centerTransX },
@@ -624,12 +595,7 @@ export default function SelectInstructorScreen() {
                   },
                 ]}
               >
-                <InstructorCardImage
-                  key="slot-center"
-                  slug={centerInstructor.slug}
-                  variant="selected"
-                  slot="center"
-                />
+                <SlotImages activeSlug={centerInstructor.slug} />
               </Animated.View>
             )}
           </View>
@@ -718,11 +684,13 @@ const styles = StyleSheet.create({
     height: POSTER_HEIGHT,
     padding: 0,
     margin: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: radius.l,
     borderWidth: 1,
+    // Cor única em todos os slots — sem troca de borda durante swipe (elimina flash)
+    borderColor: 'transparent',
     overflow: 'hidden',
-    // transparent: sem cor sólida visível entre moldura e imagem caso
-    // o asset não tenha exatamente POSTER_RATIO (evita "gap colorido").
     backgroundColor: 'transparent',
   },
   dots: {

@@ -14,6 +14,13 @@ import { useInstructors } from '../../hooks/useInstructors';
 import { FORCE_GLOW, DEFAULT_GLOW } from '../../constants/instructors';
 import { InstructorAvatar } from './InstructorAvatar';
 
+// Avatares locais (bundled): fallback quando avatar_url remoto for null/falhar.
+const LOCAL_AVATARS: Record<string, any> = {
+  ramos: require('../../../assets/instructors/avatars/ramos-avatar-circle.png'),
+  rocha: require('../../../assets/instructors/avatars/rocha-avatar-circle.png'),
+  sara:  require('../../../assets/instructors/avatars/sara-avatar-circle.png'),
+};
+
 export default function InstructorButton() {
   const router = useRouter();
   const { profile } = useAuth();
@@ -26,9 +33,22 @@ export default function InstructorButton() {
   const currentInstructor =
     instructors.find((i) => i.codigo === profile?.instructor_profile_id) ?? null;
 
-  const avatarSource = currentInstructor?.avatar_url
+  const resolvedSlug = currentInstructor?.slug ?? null;
+  // Local asset é obrigatório — não depende de avatar_url remoto.
+  // avatar_url remoto pode ser null, inválido ou lento; local é sempre bundled.
+  const localSource = resolvedSlug ? (LOCAL_AVATARS[resolvedSlug] ?? null) : null;
+  const remoteSource = currentInstructor?.avatar_url
     ? { uri: currentInstructor.avatar_url }
     : null;
+  const avatarSource = localSource ?? remoteSource;
+
+  console.log('[INSTRUCTOR_BUTTON_AVATAR]', {
+    codigo: profile?.instructor_profile_id ?? null,
+    resolvedSlug,
+    hasLocalAvatar: !!localSource,
+    hasRemoteAvatar: !!remoteSource,
+    sourceType: localSource ? 'local' : remoteSource ? 'remote' : 'none',
+  });
 
   function handleAvatarPress() {
     if (!hasInstructor) {
