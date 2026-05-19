@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRankingList, RankingItem } from '../../src/hooks/useRankingList';
 import { useAuth } from '../../src/context/AuthContext';
+import { useCanonicalIdentity } from '../../src/hooks/useCanonicalIdentity';
 import { TacticalScreen } from '../../src/design/layout/TacticalScreen';
 import { InstitutionalHeader } from '../../src/design/components/InstitutionalHeader';
 import { InstitutionalCard } from '../../src/design/components/InstitutionalCard';
@@ -12,8 +13,9 @@ import { typographyPresets } from '../../src/design/tokens/typography';
 import { spacing } from '../../src/design/tokens/spacing';
 
 export default function RankingScreen() {
-  const { session, profile } = useAuth();
-  const userId = session?.user?.id;
+  const { profile } = useAuth();
+  // Fix-03: recruta_id para highlight do item atual no ranking (mv_ranking_mensal.recruta_id)
+  const { recruta_id } = useCanonicalIdentity();
   const userForce = profile?.forca || 'marinha';
   const { rankingList, loading } = useRankingList(userForce);
 
@@ -28,7 +30,7 @@ export default function RankingScreen() {
   }
 
   const renderItem = ({ item, index }: { item: RankingItem; index: number }) => {
-    const isCurrentUser = item.user_id === userId;
+    const isCurrentUser = item.user_id === recruta_id;
     const name = item.war_name || item.full_name || 'Recruta';
     const isTop3 = index < 3;
 

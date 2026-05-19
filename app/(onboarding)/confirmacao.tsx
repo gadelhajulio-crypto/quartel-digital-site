@@ -63,7 +63,8 @@ export default function OnboardingConfirmacao() {
     try {
       console.log('[ONBOARDING_CONFIRM] rpc_start');
 
-      // rpc_complete_onboarding usa auth.uid() internamente — não depende de profile
+      // rpc_complete_onboarding usa auth.uid() internamente — param _recrutaId ignorado
+      // TODO Sprint 4: substituir session.user.id por profile?.id (recrutas.id)
       await saveOnboardingData(session.user.id, forca as any, nome_guerra);
 
       console.log('[ONBOARDING_CONFIRM] rpc_success');

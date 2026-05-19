@@ -2,12 +2,6 @@ import { supabase } from '../lib/supabase';
 import { Profile } from '../context/AuthContext';
 import { registerXp } from './xpService';
 
-// ─── P1-M1 Sprint 2 Fase 2 ───────────────────────────────────────────────────
-// Fallback flag: DEV ONLY. Flip para true para reverter ao complete_lesson sem
-// alterar backend. Nunca ativar em produção — a guarda __DEV__ garante isso.
-const USE_LEGACY_COMPLETE_LESSON = false;
-// ─────────────────────────────────────────────────────────────────────────────
-
 export const startModule = async (moduloId: string, _userId: string) => {
     try {
         // rpc_start_module: idempotente via ON CONFLICT DO NOTHING no banco
@@ -52,24 +46,9 @@ export const checkModuleAccess = (
 };
 
 export const completeLesson = async (lessonId: string, userId: string) => {
-    // userId retido na assinatura para compatibilidade com callers existentes.
-    // Não é mais enviado ao banco — identidade derivada de auth.uid() no servidor (P1-M1.1).
-
-    // Rollback rápido em DEV: flip USE_LEGACY_COMPLETE_LESSON = true no topo do arquivo.
-    if (__DEV__ && USE_LEGACY_COMPLETE_LESSON) {
-        try {
-            const { error } = await supabase.rpc('complete_lesson', {
-                p_recruta_id: userId,
-                p_lesson_id: lessonId,
-            });
-            if (error) throw error;
-        } catch (err) {
-            console.error('[PROGRESS] [LEGACY] Error completing lesson:', err);
-            throw err;
-        }
-        return;
-    }
-
+    // userId retido na assinatura por compatibilidade com callers (lesson/[id].tsx).
+    // Não é enviado ao banco — identidade resolvida por auth.uid() no servidor (P1-M1.1).
+    // Sprint 5B: bloco USE_LEGACY_COMPLETE_LESSON removido — complete_lesson depreciada.
     try {
         const { data, error } = await supabase.rpc('rpc_complete_lesson', {
             p_lesson_id: lessonId,

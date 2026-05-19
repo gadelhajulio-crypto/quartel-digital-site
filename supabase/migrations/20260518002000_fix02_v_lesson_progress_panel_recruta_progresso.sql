@@ -1,0 +1,301 @@
+-- =============================================================================
+-- Migration:  20260518002000_fix02_v_lesson_progress_panel_recruta_progresso.sql
+-- Classificação: Fix-02 — Correção de view canônica
+-- Data:       2026-05-18
+-- Autor:      institutional-fix-2026-05-18
+-- Revisão:    AGUARDANDO EXECUÇÃO — não executar sem aprovação institucional
+-- =============================================================================
+--
+-- PROBLEMA
+-- --------
+-- A view public.v_lesson_progress_panel (schema remoto ln 13188) lê da tabela
+-- public.lesson_progress (tabela LEGADA). A RPC canônica rpc_complete_lesson
+-- escreve em public.recruta_progresso. As duas tabelas são independentes: uma
+-- conclusão via rpc_complete_lesson nunca aparece em v_lesson_progress_panel.
+--
+-- Consequências encadeadas:
+-- 1. useLessonData.ts:36–41 — consulta v_lesson_progress_panel por completed_at.
+--    Como lesson_progress não tem dados de rpc_complete_lesson, progressData = null
+--    sempre → completed_at = null → botão "MARCAR AULA COMO CONCLUÍDA" nunca some.
+-- 2. ModuleLessonsScreen.tsx:87–95 — consulta v_lesson_progress_panel por lesson_id
+--    para construir a lista de aulas concluídas. Resultado sempre vazio.
+--    Nenhuma aula exibe checkmark após conclusão.
+--
+-- ESTADO ATUAL (dump remoto ln 13188–13198)
+-- ------------------------------------------
+-- CREATE OR REPLACE VIEW "public"."v_lesson_progress_panel" AS
+-- SELECT "user_id",
+--        "lesson_id",
+--        "completed_at"
+-- FROM "public"."lesson_progress" "lp";
+--
+-- TABELA LEGADA lesson_progress (dump remoto ln 3291–3298):
+-- CREATE TABLE public.lesson_progress (
+--     id                   uuid,
+--     user_id              uuid NOT NULL,    ← auth.uid() direto
+--     lesson_id            uuid NOT NULL,
+--     completed_at         timestamptz,
+--     review_completed_at  timestamptz,
+--     created_at           timestamptz
+-- );
+--
+-- TABELA CANÔNICA recruta_progresso (dump remoto ln 11094–11104):
+-- CREATE TABLE public.recruta_progresso (
+--     id           uuid NOT NULL,
+--     recruta_id   uuid NOT NULL,   ← recrutas.id (NÃO auth.uid() para usuários legados)
+--     lesson_id    uuid NOT NULL,
+--     status       text NOT NULL,   ← CHECK: só aceita 'completed'
+--     completed_at timestamptz NOT NULL DEFAULT now(),
+--     xp_granted   integer NOT NULL DEFAULT 0,
+--     source       text NOT NULL DEFAULT 'lesson_completion',
+--     created_at   timestamptz NOT NULL DEFAULT now()
+-- );
+-- UNIQUE (recruta_id, lesson_id)  ← idempotência garantida
+--
+-- RLS EM recruta_progresso (dump remoto ln 18279–18308):
+-- SELECT policy: recruta_id = (SELECT recrutas.id FROM recrutas WHERE recrutas.auth_id = auth.uid())
+-- → Para usuários autenticados: a view retorna automaticamente apenas os
+--   registros do recruta atual, sem filtro explícito no SQL.
+-- → Para service_role: retorna todos os registros (sem RLS).
+--
+-- DOIS CONSUMERS COM CONTRATOS DISTINTOS
+-- ----------------------------------------
+-- Consumer A — useLessonData.ts:36–41:
+--   supabase.from('v_lesson_progress_panel')
+--     .select('completed_at')
+--     .eq('lesson_id', lessonId)
+--     .eq('recruta_id', userId)   ← espera coluna recruta_id
+--
+-- Consumer B — ModuleLessonsScreen.tsx:87–89:
+--   supabase.from('v_lesson_progress_panel')
+--     .select('lesson_id')
+--     .eq('user_id', userId)      ← espera coluna user_id (nome legado)
+--
+-- CORREÇÃO: ESTRATÉGIA DUAL-ALIAS
+-- ---------------------------------
+-- Para preservar ambos os contratos sem alterar o frontend:
+--   - Expor recruta_id (canônico — atende Consumer A / useLessonData)
+--   - Expor recruta_id AS user_id (alias de compatibilidade — atende Consumer B)
+--   - Ambas as colunas contêm o mesmo valor: recruta_progresso.recruta_id
+--   - Preservar lesson_id e completed_at (comuns a ambos os contratos)
+--   - Adicionar xp_granted e source como colunas informacionais (sem impacto frontend)
+--
+-- LIMITAÇÃO CONHECIDA (NÃO BLOQUEANTE PARA ESTA MIGRATION)
+-- ----------------------------------------------------------
+-- userId em ambos os consumers = session.user.id = auth.uid().
+-- Para GADELHA: auth.uid() = '918c08f3...' ≠ recrutas.id = 'cc41fc7e...'.
+-- Consequência: filtros .eq('recruta_id', userId) e .eq('user_id', userId)
+-- comparam recruta_progresso.recruta_id ('cc41fc7e') com auth.uid() ('918c08f3')
+-- → retornam 0 linhas para GADELHA e outros usuários legados.
+-- A RLS já filtra os dados corretamente por recruta; o .eq() do frontend é
+-- redundante E incorreto para usuários legados.
+-- Fix definitivo: substituir userId por recrutas.id no frontend (Fix-03 — Sprint 3).
+-- Esta migration é pré-requisito do Fix-03: sem ela, a tabela fonte está errada.
+--
+-- IDEMPOTÊNCIA DA MIGRATION
+-- --------------------------
+-- CREATE OR REPLACE VIEW: reexecutável sem efeito colateral.
+-- COMMENT ON VIEW: idempotente — sobrescreve o comentário existente.
+-- GRANT: idempotente no PostgreSQL.
+--
+-- IMPACTO FRONTEND
+-- ----------------
+-- useLessonData.ts         : sem alteração de código necessária.
+--                            completed_at virá de recruta_progresso quando
+--                            o filtro .eq('recruta_id', userId) mapear
+--                            corretamente (pós Fix-03).
+-- ModuleLessonsScreen.tsx  : sem alteração de código necessária.
+--                            .eq('user_id', userId) continua funcionando
+--                            via alias; sem erro PostgREST.
+-- Impacto observável hoje  : comportamento visualmente idêntico ao atual
+--                            (completed_at null para GADELHA) pois o filtro
+--                            userId = auth.uid() ainda não casa com recrutas.id.
+--                            O benefício completo requer Fix-03.
+--
+-- RISCO
+-- -----
+-- BAIXO — recria view sem alterar tabelas.
+-- O campo user_id legado é preservado como alias → zero breaking change.
+-- Dados de lesson_progress NÃO são migrados (essa tabela continua existindo).
+-- Reversão instantânea via rollback abaixo.
+--
+-- REFERÊNCIAS
+-- -----------
+-- Plano:        supabase/baseline/LESSON_CONTENT_CREATION_PLAN.md (Fix-02, seção 4)
+-- Handoff:      supabase/baseline/FIX_01_02_HANDOFF.md
+-- Dump ref:     supabase/remote/supabase_remote_schema.sql (ln 3291, 11094, 13188)
+-- RPC ref:      supabase/migrations/20260517002000_p1_m1_1_fix_rpc_complete_lesson_auth_id_resolution.sql
+-- QA test plan: supabase/baseline/P1_M1_QA_TEST_LESSON_PLAN.md (Issue A, Issue B)
+-- =============================================================================
+
+
+-- -----------------------------------------------------------------------------
+-- PASSO 1 — Recriar v_lesson_progress_panel lendo de recruta_progresso
+-- -----------------------------------------------------------------------------
+-- CREATE OR REPLACE VIEW preserva:
+--   - OWNER (postgres)
+--   - GRANTs existentes (GRANT ALL TO service_role; GRANT SELECT TO authenticated)
+-- NÃO preserva automaticamente:
+--   - COMMENT (re-aplicado no PASSO 2)
+--
+-- Dual-alias:
+--   recruta_id         → nome canônico (atende useLessonData.ts .eq('recruta_id'))
+--   recruta_id AS user_id → alias legado (atende ModuleLessonsScreen.tsx .eq('user_id'))
+--
+-- WHERE status = 'completed':
+--   Tecnicamente redundante (CHECK constraint garante só 'completed' existe),
+--   mas documentado explicitamente para clareza semântica.
+--
+-- WHERE completed_at IS NOT NULL:
+--   Tecnicamente redundante (coluna é NOT NULL com DEFAULT now()),
+--   mas documentado explicitamente como contrato de leitura.
+
+CREATE OR REPLACE VIEW public.v_lesson_progress_panel AS
+SELECT
+    rp.recruta_id,                     -- canônico: atende Consumer A (useLessonData)
+    rp.recruta_id   AS user_id,        -- alias legado: atende Consumer B (ModuleLessonsScreen)
+    rp.lesson_id,
+    rp.completed_at,
+    rp.xp_granted,                     -- informacional: não lido pelo frontend hoje
+    rp.source                          -- informacional: rastreabilidade de origem
+FROM public.recruta_progresso rp
+WHERE rp.status        = 'completed'   -- CHECK constraint: única opção válida
+  AND rp.completed_at IS NOT NULL;     -- NOT NULL constraint: sempre satisfeito
+
+
+-- -----------------------------------------------------------------------------
+-- PASSO 2 — Re-aplicar COMMENT (CREATE OR REPLACE não preserva)
+-- -----------------------------------------------------------------------------
+
+COMMENT ON VIEW public.v_lesson_progress_panel IS
+    'CANONICAL RCC FRONTEND VIEW. Lesson progress projection. '
+    'Frontend may SELECT through authenticated role. '
+    'Fix-02 2026-05-18: migrated from lesson_progress (legacy) to '
+    'recruta_progresso (canonical). Dual-alias: recruta_id + user_id (compat).';
+
+
+-- -----------------------------------------------------------------------------
+-- PASSO 3 — Re-afirmar GRANTs (idempotente — sem mudança em relação ao dump)
+-- -----------------------------------------------------------------------------
+-- Dump remoto (ln 19707–19708):
+--   GRANT ALL ON TABLE "public"."v_lesson_progress_panel" TO "service_role";
+--   GRANT SELECT ON TABLE "public"."v_lesson_progress_panel" TO "authenticated";
+--
+-- Nota: recruta_progresso já tem RLS habilitada (dump ln 18279).
+--   SELECT policy: recruta_id = (SELECT recrutas.id WHERE recrutas.auth_id = auth.uid())
+--   A view herda o RLS da tabela subjacente (SECURITY INVOKER, default PostgreSQL).
+--   Usuários autenticados veem apenas seus próprios registros automaticamente.
+
+GRANT ALL    ON TABLE public.v_lesson_progress_panel TO service_role;
+GRANT SELECT ON TABLE public.v_lesson_progress_panel TO authenticated;
+
+
+-- =============================================================================
+-- TESTES SQL PÓS-APPLY
+-- (executar após migration — NÃO parte da migration)
+-- =============================================================================
+
+-- TESTE T-01 — View existe com as colunas corretas?
+--
+--   SELECT column_name, data_type
+--   FROM information_schema.columns
+--   WHERE table_schema = 'public'
+--     AND table_name   = 'v_lesson_progress_panel'
+--   ORDER BY ordinal_position;
+--   -- Esperado: 6 colunas
+--   --   recruta_id   | uuid
+--   --   user_id      | uuid       ← alias de compatibilidade
+--   --   lesson_id    | uuid
+--   --   completed_at | timestamp with time zone
+--   --   xp_granted   | integer
+--   --   source       | text
+--
+-- TESTE T-02 — View lê de recruta_progresso (não de lesson_progress)?
+--
+--   SELECT pg_get_viewdef('public.v_lesson_progress_panel', true);
+--   -- Esperado: definição contém 'recruta_progresso'
+--   -- Esperado: definição NÃO contém 'lesson_progress'
+--
+-- TESTE T-03 — GRANT para authenticated existe?
+--
+--   SELECT has_table_privilege('authenticated', 'public.v_lesson_progress_panel', 'SELECT');
+--   -- Esperado: true
+--
+-- TESTE T-04 — COMMENT atualizado?
+--
+--   SELECT obj_description(
+--       (SELECT oid FROM pg_class
+--        WHERE relname = 'v_lesson_progress_panel'
+--          AND relnamespace = 'public'::regnamespace),
+--       'pg_class'
+--   );
+--   -- Esperado: string contém 'Fix-02 2026-05-18'
+--
+-- TESTE T-05 — [Funcional] View retorna dados de rpc_complete_lesson?
+--   (Executar como service_role após pelo menos uma conclusão via Expo Go)
+--
+--   SELECT recruta_id, user_id, lesson_id, completed_at, xp_granted, source
+--   FROM public.v_lesson_progress_panel
+--   WHERE source = 'rpc_complete_lesson'
+--   LIMIT 5;
+--   -- Esperado: linhas com source = 'rpc_complete_lesson', completed_at preenchido.
+--   -- Antes do fix: retornava 0 linhas (lesson_progress não tem dados da RPC canônica).
+--
+-- TESTE T-06 — [Funcional] Consumer B alias user_id funciona?
+--
+--   -- Simular a query de ModuleLessonsScreen.tsx (como service_role, sem RLS):
+--   SELECT lesson_id
+--   FROM public.v_lesson_progress_panel
+--   WHERE user_id = 'cc41fc7e-ce7d-405d-9178-c14b39e1a017'  -- recrutas.id de GADELHA
+--   LIMIT 5;
+--   -- Esperado: linhas retornadas (user_id é alias de recruta_id).
+--   -- Nota: o app envia auth.uid() ('918c08f3'), não recrutas.id ('cc41fc7e').
+--   --   Com auth.uid() a query retorna 0 linhas — comportamento correto
+--   --   da migration; Fix-03 (frontend) resolverá o mapeamento.
+--
+-- TESTE T-07 — [Funcional] RLS funciona corretamente via authenticated?
+--   (Executar via SQL Editor → Run as user → GADELHA)
+--
+--   SELECT * FROM public.v_lesson_progress_panel;
+--   -- Esperado: apenas registros de GADELHA (recruta_id = 'cc41fc7e...').
+--   -- Se retornar registros de outros recrutas: RLS não está ativo — BLOQUEANTE.
+--
+-- =============================================================================
+-- ROLLBACK
+-- (executar APENAS se necessário reverter Fix-02)
+-- =============================================================================
+--
+-- Restaura o estado exato do dump remoto (ln 13188–13198):
+--
+-- CREATE OR REPLACE VIEW public.v_lesson_progress_panel AS
+-- SELECT "user_id",
+--        "lesson_id",
+--        "completed_at"
+-- FROM public.lesson_progress lp;
+--
+-- COMMENT ON VIEW public.v_lesson_progress_panel IS
+--     'CANONICAL RCC FRONTEND VIEW. Lesson progress projection. '
+--     'Frontend may SELECT through authenticated role.';
+--
+-- GRANT ALL    ON TABLE public.v_lesson_progress_panel TO service_role;
+-- GRANT SELECT ON TABLE public.v_lesson_progress_panel TO authenticated;
+--
+-- Verificação pós-rollback:
+--   SELECT pg_get_viewdef('public.v_lesson_progress_panel', true);
+--   -- Esperado: definição contém 'lesson_progress' (tabela legada restaurada)
+--
+-- Impacto do rollback:
+--   - v_lesson_progress_panel volta a ler lesson_progress (legada).
+--   - Conclusões via rpc_complete_lesson voltam a ser invisíveis para o frontend.
+--   - Comportamento idêntico ao estado anterior à migration.
+--   - Nenhum dado em recruta_progresso é afetado.
+--
+-- =============================================================================
+-- VEREDICTO: AGUARDANDO EXECUÇÃO
+-- =============================================================================
+-- Status: aprovação institucional pendente.
+-- Responsável pela execução: DBA / Supabase Admin.
+-- Executar no SQL Editor como service_role ou via supabase db push.
+-- Prerequisito: Fix-01 NÃO é pré-requisito desta migration (independentes).
+-- Ordem recomendada: Fix-01 → Fix-02 (facilitam validação progressiva).
+-- =============================================================================

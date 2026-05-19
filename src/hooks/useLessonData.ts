@@ -8,6 +8,9 @@ export function useLessonData(lessonId: string, userId?: string) {
 
     useEffect(() => {
         async function load() {
+            // Sempre resetar loading antes de qualquer guard, para cobrir o caso em que
+            // userId resolve de undefined para recruta_id real após profile carregar.
+            setLoading(true);
             if (!userId || !lessonId) {
                 setLoading(false);
                 return;

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Saf
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useLessonData } from '../../../src/hooks/useLessonData';
-import { useAuth } from '../../../src/context/AuthContext';
+import { useCanonicalIdentity } from '../../../src/hooks/useCanonicalIdentity';
 import { completeLesson } from '../../../src/services/progressService';
 import { VideoPlayer } from '../../../src/components/VideoPlayer';
 import { theme } from '../../../src/theme';
@@ -11,11 +11,12 @@ import { theme } from '../../../src/theme';
 export default function LessonScreen() {
     const { id } = useLocalSearchParams();
     const router = useRouter();
-    const { session } = useAuth();
-    const userId = session?.user?.id;
+    // Fix-03: recruta_id (recrutas.id) é a identidade canônica para queries de domínio
+    const { recruta_id } = useCanonicalIdentity();
 
-    const { data: lesson, loading } = useLessonData(String(id), userId);
+    const { data: lesson, loading } = useLessonData(String(id), recruta_id ?? undefined);
     const [completing, setCompleting] = useState(false);
+    const [justCompleted, setJustCompleted] = useState(false);
 
     // 1. Loading State
     if (loading) {
@@ -38,7 +39,8 @@ export default function LessonScreen() {
         );
     }
 
-    const { title, video_url, pdf_url } = lesson;
+    const { title, video_url, pdf_url, completed_at } = lesson;
+    const isCompleted = justCompleted || !!completed_at;
     const url = video_url ?? pdf_url;
 
     // 3. Content Renderer Logic (Strict URL Pattern Matching)
@@ -93,12 +95,15 @@ export default function LessonScreen() {
     };
 
     async function handleComplete() {
-        if (!userId || !id || completing) return;
+        if (!recruta_id || !id || completing || isCompleted) return;
         setCompleting(true);
 
         try {
-            // C2 FIX: Use RPC via Service
-            await completeLesson(String(id), userId);
+            // recruta_id retido na assinatura por compat — ignorado pelo backend
+            // (rpc_complete_lesson usa auth.uid() internamente)
+            await completeLesson(String(id), recruta_id);
+            setJustCompleted(true);
+            setCompleting(false);
             router.back();
         } catch (e) {
             Alert.alert('Erro', 'Tente novamente.');
@@ -123,15 +128,22 @@ export default function LessonScreen() {
 
             {/* Footer Fixo */}
             <View style={styles.footer}>
-                <TouchableOpacity
-                    style={[styles.completeBtn, completing && { opacity: 0.7 }]}
-                    onPress={handleComplete}
-                    disabled={completing}
-                >
-                    <Text style={styles.completeBtnText}>
-                        {completing ? 'REGISTRANDO...' : 'MARCAR AULA COMO CONCLUÍDA'}
-                    </Text>
-                </TouchableOpacity>
+                {isCompleted ? (
+                    <View style={[styles.completeBtn, styles.completedBanner]}>
+                        <Ionicons name="checkmark-circle" size={18} color="#000" style={{ marginRight: 8 }} />
+                        <Text style={styles.completeBtnText}>AULA CONCLUÍDA</Text>
+                    </View>
+                ) : (
+                    <TouchableOpacity
+                        style={[styles.completeBtn, completing && { opacity: 0.7 }]}
+                        onPress={handleComplete}
+                        disabled={completing}
+                    >
+                        <Text style={styles.completeBtnText}>
+                            {completing ? 'REGISTRANDO...' : 'MARCAR AULA COMO CONCLUÍDA'}
+                        </Text>
+                    </TouchableOpacity>
+                )}
             </View>
         </SafeAreaView>
     );
@@ -184,6 +196,11 @@ const styles = StyleSheet.create({
         paddingVertical: 16,
         borderRadius: 8,
         alignItems: 'center',
+    },
+    completedBanner: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        opacity: 0.85,
     },
     completeBtnText: {
         color: '#000',

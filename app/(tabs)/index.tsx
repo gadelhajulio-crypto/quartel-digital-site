@@ -290,6 +290,18 @@ export default function PainelScreen() {
         </View>
       </InstitutionalSection>
 
+      {/* DEV_ONLY — botão temporário para QA do módulo de teste */}
+      {__DEV__ && (
+        <TouchableOpacity
+          onPress={() => router.push('/(stack)/module/00000000-0000-0000-0000-000000010001')}
+          style={{ margin: 16, padding: 12, backgroundColor: '#1a1a2e', borderWidth: 1, borderColor: '#FFD700', borderRadius: 8 }}
+        >
+          <Text style={{ color: '#FFD700', textAlign: 'center', fontSize: 12, fontWeight: 'bold' }}>
+            [QA] Abrir módulo teste
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* Padding para BottomBar */}
       <View style={{ height: 100 }} />
     </TacticalScreen>

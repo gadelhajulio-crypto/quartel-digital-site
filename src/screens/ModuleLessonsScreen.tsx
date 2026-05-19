@@ -10,8 +10,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../context/AuthContext';
 import { useForceTheme } from '../context/ForceThemeContext';
+import { useCanonicalIdentity } from '../hooks/useCanonicalIdentity';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
 type Aula = {
@@ -33,7 +33,8 @@ export default function ModuleLessonsScreen() {
     const isDegustacao = degustacaoParam === 'true';
     const isLiberado = liberadoParam === 'true';
 
-    const { session } = useAuth();
+    // Fix-03: recruta_id (recrutas.id) para queries de domínio (v_lesson_progress_panel)
+    const { recruta_id } = useCanonicalIdentity();
     const { theme, loading: themeLoading } = useForceTheme();
 
     const styles = useMemo(() => getStyles(theme), [theme]);
@@ -46,17 +47,15 @@ export default function ModuleLessonsScreen() {
         );
     }
 
-    const userId = session?.user?.id;
-
     const [aulas, setAulas] = useState<Aula[]>([]);
     const [concluidas, setConcluidas] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (userId && moduloId) {
+        if (recruta_id && moduloId) {
             loadData();
         }
-    }, [userId, moduloId]);
+    }, [recruta_id, moduloId]);
 
     async function loadData() {
         setLoading(true);
@@ -82,11 +81,12 @@ export default function ModuleLessonsScreen() {
 
     async function loadConcluidas() {
         try {
-            if (!userId) return;
+            if (!recruta_id) return;
             const { data, error } = await supabase
                 .from('v_lesson_progress_panel')
                 .select('lesson_id')
-                .eq('user_id', userId);
+                // user_id = alias de recruta_id na view (Fix-02). Valor = recrutas.id (Fix-03).
+                .eq('user_id', recruta_id);
 
             if (error) throw error;
 
