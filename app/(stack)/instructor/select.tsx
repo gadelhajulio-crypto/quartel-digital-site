@@ -9,6 +9,7 @@ import {
   Animated,
   ActivityIndicator,
   Dimensions,
+  GestureResponderHandlers,
   Image,
   InteractionManager,
   PanResponder,
@@ -119,7 +120,7 @@ type DeckMemoProps = {
   visualCenterIndex: number;
   swipeX: Animated.Value;
   dragDir: DragDir;
-  panHandlers: { [key: string]: (...args: any[]) => any };
+  panHandlers: GestureResponderHandlers;
 };
 const InstructorDeckMemo = React.memo(function InstructorDeck({
   instructors,
