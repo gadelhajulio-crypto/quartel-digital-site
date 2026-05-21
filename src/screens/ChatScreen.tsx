@@ -69,13 +69,18 @@ function RecrutaMessage({
   text,
   timestamp,
   status,
+  onRetry,
+  onDiscard,
 }: {
   text: string;
   timestamp: string | Date;
   status?: 'sending' | 'sent' | 'read' | 'failed';
+  onRetry?: () => void;
+  onDiscard?: () => void;
 }) {
   const d = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
   const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const isFailed = status === 'failed';
 
   return (
     <View style={msgStyles.recrutaRow}>
@@ -84,7 +89,7 @@ function RecrutaMessage({
           msgStyles.recrutaBubble,
           {
             backgroundColor: tatico.colors.accentSoft,
-            borderColor: tatico.colors.accent,
+            borderColor: isFailed ? obsidiana.colors.error : tatico.colors.accent,
           },
         ]}
       >
@@ -92,9 +97,29 @@ function RecrutaMessage({
         <Text style={[typographyPresets.label, msgStyles.timestamp]}>
           {timeStr}
           {status === 'sending' && '  ···'}
-          {status === 'failed' && '  !'}
+          {isFailed && '  !'}
         </Text>
       </View>
+
+      {/* CTAs de retry/discard — apenas quando falhou e callbacks disponíveis */}
+      {isFailed && (onRetry || onDiscard) && (
+        <View style={msgStyles.failedActions}>
+          {onRetry && (
+            <TouchableOpacity onPress={onRetry} style={msgStyles.failedBtn} activeOpacity={0.7}>
+              <Text style={[typographyPresets.label, { color: tatico.colors.accent, letterSpacing: 1 }]}>
+                TENTAR NOVAMENTE
+              </Text>
+            </TouchableOpacity>
+          )}
+          {onDiscard && (
+            <TouchableOpacity onPress={onDiscard} style={msgStyles.failedBtn} activeOpacity={0.7}>
+              <Text style={[typographyPresets.label, { color: tatico.colors.muted, letterSpacing: 1 }]}>
+                DESCARTAR
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -473,7 +498,11 @@ export default function ChatScreen() {
       setIsSending(true);
       pendingRetry.current = null;
 
-      logChatEvent('message_send_started', { instrutor_codigo: instructorSlug });
+      if (existingClientMessageId) {
+        logChatEvent('message_retry_started', { instrutor_codigo: instructorSlug });
+      } else {
+        logChatEvent('message_send_started', { instrutor_codigo: instructorSlug });
+      }
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
 
       const idempotency_key = `chat:${recrutaId}:${clientMsgId}`;
@@ -500,11 +529,14 @@ export default function ChatScreen() {
         // tryMarkRead após fetchMensagens: zera unread_count no banco após leitura.
         // Garante que o badge do BottomBar reflita "lido" sem realtime.
         if (cid) {
-          logChatEvent('message_send_succeeded', {
-            instrutor_codigo: instructorSlug,
-            conversa_id_prefix: conversaPrefix(cid),
-            correlation_id: result.correlation_id,
-          });
+          logChatEvent(
+            existingClientMessageId ? 'message_retry_succeeded' : 'message_send_succeeded',
+            {
+              instrutor_codigo: instructorSlug,
+              conversa_id_prefix: conversaPrefix(cid),
+              correlation_id: result.correlation_id,
+            },
+          );
           await fetchMensagens(cid);
           logChatEvent('unread_cleared', { instrutor_codigo: instructorSlug });
           await tryMarkRead(cid);
@@ -541,10 +573,13 @@ export default function ChatScreen() {
           ),
         );
 
-        logChatEvent('message_send_failed', {
-          instrutor_codigo: instructorSlug,
-          error_code: err instanceof ChatError ? err.code : 'unknown',
-        });
+        logChatEvent(
+          existingClientMessageId ? 'message_retry_failed' : 'message_send_failed',
+          {
+            instrutor_codigo: instructorSlug,
+            error_code: err instanceof ChatError ? err.code : 'unknown',
+          },
+        );
         setSendError(errorMsg);
         pendingRetry.current = { text: trimmed, client_message_id: clientMsgId };
       } finally {
@@ -559,6 +594,12 @@ export default function ChatScreen() {
       const { text, client_message_id } = pendingRetry.current;
       handleSend(text, client_message_id);
     }
+  }
+
+  function handleDiscard(clientMsgId: string) {
+    setLocalMessages((prev) => prev.filter((lm) => lm.client_message_id !== clientMsgId));
+    setSendError(null);
+    logChatEvent('message_retry_discarded', { instrutor_codigo: instructorSlug });
   }
 
   function handleBack() {
@@ -635,6 +676,12 @@ export default function ChatScreen() {
           text={lm.text}
           timestamp={lm.timestamp}
           status={lm.status}
+          onRetry={lm.status === 'failed'
+            ? () => handleSend(lm.text, lm.client_message_id)
+            : undefined}
+          onDiscard={lm.status === 'failed'
+            ? () => handleDiscard(lm.client_message_id)
+            : undefined}
         />
       );
     }
@@ -893,6 +940,15 @@ const msgStyles = StyleSheet.create({
     gap: spacing.xs,
   },
   timestamp: { color: tatico.colors.muted, alignSelf: 'flex-end', marginTop: 2 },
+  failedActions: {
+    flexDirection: 'row',
+    gap: spacing.m,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  },
+  failedBtn: {
+    paddingVertical: spacing.xs,
+  },
   instrutorRow: { alignItems: 'flex-start' },
   instrutorBubble: {
     maxWidth: '92%',
