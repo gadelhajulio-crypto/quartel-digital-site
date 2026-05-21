@@ -1,10 +1,10 @@
 // RCC Wave 1 — Chat Central
 // Cérebro institucional: valida HMAC, orquestra resposta do instrutor.
 // Nunca escreve tabelas. Nunca emite C5. Nunca decide unread.
-
-import { OpenAI } from "./deps.ts";
+// SDK OpenAI removido — fetch direto garante OpenAI-Beta: assistants=v2 em todas as chamadas.
 
 const MAX_SKEW_SECONDS = 300;
+const OPENAI_API_BASE = "https://api.openai.com/v1";
 
 const FORCE_AGENTS: Record<string, string> = {
   marinha:     "asst_6TFPlmsULj3fpxArwlkO16nL",
@@ -37,21 +37,115 @@ function buildAdditionalInstructions(
   ].filter(Boolean).join("\n");
 }
 
+// ── OpenAI fetch helpers ───────────────────────────────────────────────────────
+
+function makeOpenAIHeaders(apiKey: string): Record<string, string> {
+  return {
+    "Authorization":  `Bearer ${apiKey}`,
+    "Content-Type":   "application/json",
+    "OpenAI-Beta":    "assistants=v2",
+  };
+}
+
+async function openAIPost(
+  path: string,
+  apiKey: string,
+  body: unknown,
+  request_id: string,
+  label: string,
+): Promise<unknown> {
+  const url = `${OPENAI_API_BASE}${path}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: makeOpenAIHeaders(apiKey),
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    console.error("[CHAT_CENTRAL_W1] openai_fetch_error", {
+      request_id,
+      label,
+      http_status:   res.status,
+      error_type:    data?.error?.type    ?? null,
+      error_code:    data?.error?.code    ?? null,
+      error_message: data?.error?.message ?? null,
+    });
+    const err = new Error(`openai_fetch_failed:${label}:${res.status}`);
+    (err as any).openai_status  = res.status;
+    (err as any).openai_type    = data?.error?.type    ?? null;
+    (err as any).openai_code    = data?.error?.code    ?? null;
+    (err as any).openai_message = data?.error?.message ?? null;
+    throw err;
+  }
+
+  return data;
+}
+
+async function openAIGet(
+  path: string,
+  apiKey: string,
+  request_id: string,
+  label: string,
+): Promise<unknown> {
+  const url = `${OPENAI_API_BASE}${path}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: makeOpenAIHeaders(apiKey),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    console.error("[CHAT_CENTRAL_W1] openai_fetch_error", {
+      request_id,
+      label,
+      http_status:   res.status,
+      error_type:    data?.error?.type    ?? null,
+      error_code:    data?.error?.code    ?? null,
+      error_message: data?.error?.message ?? null,
+    });
+    const err = new Error(`openai_fetch_failed:${label}:${res.status}`);
+    (err as any).openai_status  = res.status;
+    (err as any).openai_type    = data?.error?.type    ?? null;
+    (err as any).openai_code    = data?.error?.code    ?? null;
+    (err as any).openai_message = data?.error?.message ?? null;
+    throw err;
+  }
+
+  return data;
+}
+
+// ── Polling do run ─────────────────────────────────────────────────────────────
+
 async function waitForRunReply(
-  openai: OpenAI,
+  apiKey: string,
   threadId: string,
   runId: string,
   request_id: string,
 ): Promise<string> {
   const MAX_ATTEMPTS = 25;
+
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const run = await openai.beta.threads.runs.retrieve(threadId, runId);
+    const run = await openAIGet(
+      `/threads/${threadId}/runs/${runId}`,
+      apiKey,
+      request_id,
+      "runs.retrieve",
+    ) as { status: string; last_error?: { code?: string; message?: string } };
 
     if (run.status === "completed") {
-      const msgs = await openai.beta.threads.messages.list(threadId, { limit: 1 });
+      const msgs = await openAIGet(
+        `/threads/${threadId}/messages?limit=1&order=desc`,
+        apiKey,
+        request_id,
+        "messages.list",
+      ) as { data: Array<{ role: string; content: Array<{ type: string; text?: { value: string } }> }> };
+
       const last = msgs.data[0];
       if (last?.role === "assistant" && last.content[0]?.type === "text") {
-        return last.content[0].text.value;
+        return last.content[0].text!.value;
       }
       return "Sem resposta disponível.";
     }
@@ -61,12 +155,12 @@ async function waitForRunReply(
       run.status === "cancelled" ||
       run.status === "expired"
     ) {
-      const lastError = (run as any).last_error ?? null;
+      const lastError = run.last_error ?? null;
       console.error("[CHAT_CENTRAL_W1] openai_run_failed", {
         request_id,
         run_status: run.status,
-        run_id: runId,
-        last_error_code: lastError?.code ?? null,
+        run_id:     runId,
+        last_error_code:    lastError?.code    ?? null,
         last_error_message: lastError?.message ?? null,
       });
       throw new Error(`run_ended:${run.status}:${lastError?.code ?? "unknown"}`);
@@ -74,9 +168,10 @@ async function waitForRunReply(
 
     await new Promise((r) => setTimeout(r, 1000));
   }
+
   console.error("[CHAT_CENTRAL_W1] openai_run_timeout", {
     request_id,
-    run_id: runId,
+    run_id:   runId,
     attempts: MAX_ATTEMPTS,
   });
   throw new Error("run_timeout");
@@ -113,7 +208,6 @@ function bytesToHex(bytes: Uint8Array) {
     .join("");
 }
 
-// Verifica HMAC de `${timestamp_number}.${rawBody}` — mesmo contrato de instrutor-send.
 async function hmacSha256Hex(secret: string, message: string): Promise<string> {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -146,8 +240,8 @@ Deno.serve(async (req) => {
 
     console.log("[CHAT_CENTRAL_W1] start", {
       request_id,
-      method: req.method,
-      has_ts: !!timestamp,
+      method:  req.method,
+      has_ts:  !!timestamp,
       has_sig: !!signatureHeader,
     });
 
@@ -155,8 +249,6 @@ Deno.serve(async (req) => {
       return json(401, { ok: false, reason: "missing_headers", request_id });
     }
 
-    // ts como número — ${ts} em template literal produz a mesma string que o
-    // instrutor-send envia como header x-qd-timestamp.
     const ts = Number(timestamp);
     if (!Number.isFinite(ts)) {
       return json(401, { ok: false, reason: "bad_timestamp", request_id });
@@ -166,11 +258,7 @@ Deno.serve(async (req) => {
     const skew = Math.abs(now - ts);
     if (skew > MAX_SKEW_SECONDS) {
       console.warn("[CHAT_CENTRAL_W1] hmac_failed", {
-        request_id,
-        reason: "timestamp_skew",
-        skew,
-        ts,
-        now,
+        request_id, reason: "timestamp_skew", skew, ts, now,
       });
       return json(401, { ok: false, reason: "timestamp_skew", request_id });
     }
@@ -178,8 +266,7 @@ Deno.serve(async (req) => {
     const prefix = "sha256=";
     if (!signatureHeader.startsWith(prefix)) {
       console.warn("[CHAT_CENTRAL_W1] hmac_failed", {
-        request_id,
-        reason: "bad_signature_format",
+        request_id, reason: "bad_signature_format",
       });
       return json(401, { ok: false, reason: "bad_signature_format", request_id });
     }
@@ -187,50 +274,41 @@ Deno.serve(async (req) => {
     const providedHex = signatureHeader.slice(prefix.length).trim().toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(providedHex)) {
       console.warn("[CHAT_CENTRAL_W1] hmac_failed", {
-        request_id,
-        reason: "bad_signature_hex",
-        providedLen: providedHex.length,
+        request_id, reason: "bad_signature_hex", providedLen: providedHex.length,
       });
       return json(401, { ok: false, reason: "bad_signature_hex", request_id });
     }
 
-    // rawBody: string exato recebido no body HTTP.
-    // base: `${ts}.${rawBody}` — exatamente o que instrutor-send assinou.
     const rawBody = await req.text();
     const base = `${ts}.${rawBody}`;
     const expectedHex = await hmacSha256Hex(secret, base);
-
     const sigOk = timingSafeEqual(hexToBytes(expectedHex), hexToBytes(providedHex));
 
     if (!sigOk) {
-      // ── [CHAT_CENTRAL_W1] hmac_failed ───────────────────────────────────────
       console.warn("[CHAT_CENTRAL_W1] hmac_failed", {
         request_id,
-        reason: "sig_mismatch",
+        reason:         "sig_mismatch",
         ts,
-        rawBodyLen: rawBody.length,
+        rawBodyLen:     rawBody.length,
         expectedPrefix: expectedHex.slice(0, 12),
         providedPrefix: providedHex.slice(0, 12),
-        ms: Date.now() - started,
+        ms:             Date.now() - started,
       });
       return json(401, { ok: false, reason: "sig_mismatch", request_id });
     }
 
     // ── [CHAT_CENTRAL_W1] hmac_ok ────────────────────────────────────────────
     console.log("[CHAT_CENTRAL_W1] hmac_ok", {
-      request_id,
-      ts,
-      rawBodyLen: rawBody.length,
-      ms: Date.now() - started,
+      request_id, ts, rawBodyLen: rawBody.length, ms: Date.now() - started,
     });
 
     let payload: {
-      recruta_id: string;
+      recruta_id:    string;
       instrutor_slug: string;
-      forca: string;
-      access_mode: string;
-      user_text: string;
-      session_id: string;
+      forca:         string;
+      access_mode:   string;
+      user_text:     string;
+      session_id:    string;
     };
 
     try {
@@ -251,7 +329,6 @@ Deno.serve(async (req) => {
       return json(500, { ok: false, reason: "missing_openai_key", request_id });
     }
 
-    const openai = new OpenAI({ apiKey: openaiKey });
     const agentId = FORCE_AGENTS[forca] ?? FORCE_AGENTS.marinha;
     const additionalInstructions = buildAdditionalInstructions(instrutor_slug, forca, access_mode);
     const correlation_id = crypto.randomUUID();
@@ -263,29 +340,48 @@ Deno.serve(async (req) => {
       instrutor_slug,
       forca,
       access_mode,
-      agentId,
       ms: Date.now() - started,
     });
 
-    const thread = await openai.beta.threads.create();
-    await openai.beta.threads.messages.create(thread.id, {
-      role: "user",
-      content: user_text,
-    });
+    // 1. Criar thread
+    const thread = await openAIPost(
+      "/threads",
+      openaiKey,
+      {},
+      request_id,
+      "threads.create",
+    ) as { id: string };
 
-    const run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: agentId,
-      additional_instructions: additionalInstructions,
-    });
+    // 2. Adicionar mensagem do usuário
+    await openAIPost(
+      `/threads/${thread.id}/messages`,
+      openaiKey,
+      { role: "user", content: user_text },
+      request_id,
+      "messages.create",
+    );
 
-    const reply = await waitForRunReply(openai, thread.id, run.id, request_id);
+    // 3. Criar run
+    const run = await openAIPost(
+      `/threads/${thread.id}/runs`,
+      openaiKey,
+      {
+        assistant_id:             agentId,
+        additional_instructions:  additionalInstructions,
+      },
+      request_id,
+      "runs.create",
+    ) as { id: string };
+
+    // 4. Aguardar conclusão do run e recuperar resposta
+    const reply = await waitForRunReply(openaiKey, thread.id, run.id, request_id);
 
     // ── [CHAT_CENTRAL_W1] openai_success ─────────────────────────────────────
     console.log("[CHAT_CENTRAL_W1] openai_success", {
       request_id,
       correlation_id,
       replyLen: reply.length,
-      ms: Date.now() - started,
+      ms:       Date.now() - started,
     });
 
     return json(200, {
@@ -295,19 +391,24 @@ Deno.serve(async (req) => {
       request_id,
       ms: Date.now() - started,
     });
+
   } catch (err) {
     const errStr = String(err);
-    // Extrair reason do erro para facilitar diagnóstico no instrutor-send
     let reason = "internal_error";
-    if (errStr.includes("run_ended:")) reason = errStr.replace("Error: ", "").split(":").slice(0, 2).join(":");
-    else if (errStr.includes("run_timeout")) reason = "openai_run_timeout";
-    else if (errStr.includes("openai") || errStr.includes("OpenAI")) reason = "openai_error";
+    if (errStr.includes("run_ended:"))  reason = errStr.replace("Error: ", "").split(":").slice(0, 2).join(":");
+    else if (errStr.includes("run_timeout"))   reason = "openai_run_timeout";
+    else if (errStr.includes("openai_fetch_failed")) reason = "openai_error";
+    else if (errStr.toLowerCase().includes("openai")) reason = "openai_error";
 
     console.error("[CHAT_CENTRAL_W1] exception", {
       request_id,
-      err: errStr,
       reason,
-      ms: Date.now() - started,
+      err:                errStr,
+      openai_http_status: (err as any)?.openai_status  ?? null,
+      openai_error_type:  (err as any)?.openai_type    ?? null,
+      openai_error_code:  (err as any)?.openai_code    ?? null,
+      openai_message:     (err as any)?.openai_message ?? null,
+      ms:                 Date.now() - started,
     });
     return json(500, { ok: false, reason, request_id });
   }

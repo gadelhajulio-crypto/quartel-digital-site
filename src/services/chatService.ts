@@ -210,12 +210,21 @@ export async function sendMessageW1(payload: ChatPayloadW1): Promise<PersistedMe
   const { data, error } = await Promise.race([invocation, timeout]);
 
   if (error) {
+    // Extrair campos estruturados do body retornado pela Edge Function
+    let _bodyJson: Record<string, unknown> | null = null;
+    try {
+      const _ctx = (error as any)?.context;
+      if (_ctx && typeof _ctx.text === 'function') {
+        try { _bodyJson = JSON.parse(await _ctx.text()); } catch {}
+      }
+    } catch {}
+
     console.warn('[CHAT_W1] edge_function_error', {
-      code: (error as any)?.code ?? null,
-      message: (error as any)?.message ?? String(error),
-      details: (error as any)?.details ?? null,
-      context: (error as any)?.context ?? null,
-      status: (error as any)?.status ?? null,
+      status:             (error as any)?.context?.status ?? (error as any)?.status ?? null,
+      reason:             _bodyJson?.reason              ?? null,
+      detail:             _bodyJson?.detail              ?? null,
+      central_request_id: _bodyJson?.central_request_id ?? null,
+      ef_request_id:      _bodyJson?.request_id         ?? null,
     });
     throw new ChatError('server', 'Falha na comunicação com o QG. Tente novamente.');
   }
