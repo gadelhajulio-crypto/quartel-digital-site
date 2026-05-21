@@ -1,19 +1,19 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { obsidiana } from '../themes/obsidiana';
+import type { InstitutionalTheme } from '../themes/types';
 import { typographyPresets } from '../tokens/typography';
 
-type Theme = typeof obsidiana;
 type BadgeVariant = 'accent' | 'success' | 'warning' | 'error' | 'muted';
 
 type Props = {
   label: string;
-  theme?: Theme;
+  theme?: InstitutionalTheme;
   variant?: BadgeVariant;
   style?: ViewStyle;
 };
 
-const variantColor = (theme: Theme, variant: BadgeVariant) => {
+const variantColor = (theme: InstitutionalTheme, variant: BadgeVariant) => {
   switch (variant) {
     case 'accent':
       return { bg: theme.colors.accentSoft, text: theme.colors.accent };

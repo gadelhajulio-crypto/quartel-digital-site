@@ -8,16 +8,15 @@ import {
   TextStyle,
 } from 'react-native';
 import { obsidiana } from '../themes/obsidiana';
+import type { InstitutionalTheme } from '../themes/types';
 import { typographyPresets } from '../tokens/typography';
-
-type Theme = typeof obsidiana;
 type Variant = 'primary' | 'secondary' | 'ghost';
 type Size = 's' | 'm' | 'l';
 
 type Props = {
   label: string;
   onPress: () => void;
-  theme?: Theme;
+  theme?: InstitutionalTheme;
   variant?: Variant;
   size?: Size;
   disabled?: boolean;

@@ -15,6 +15,7 @@ export { dossie } from './themes/dossie';
 export type { ObsidianaTheme } from './themes/obsidiana';
 export type { TaticoTheme } from './themes/tatico';
 export type { DossieTheme } from './themes/dossie';
+export type { InstitutionalTheme } from './themes/types';
 
 // Components
 export { InstitutionalCard } from './components/InstitutionalCard';

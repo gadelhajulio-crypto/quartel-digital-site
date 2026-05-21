@@ -1,15 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { obsidiana } from '../themes/obsidiana';
+import type { InstitutionalTheme } from '../themes/types';
 import { typographyPresets } from '../tokens/typography';
-
-type Theme = typeof obsidiana;
 
 type Props = {
   title?: string;
   subtitle?: string;
   children: React.ReactNode;
-  theme?: Theme;
+  theme?: InstitutionalTheme;
   style?: ViewStyle;
   titleRight?: React.ReactNode;
 };

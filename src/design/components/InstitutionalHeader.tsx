@@ -1,14 +1,13 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
 import { obsidiana } from '../themes/obsidiana';
+import type { InstitutionalTheme } from '../themes/types';
 import { typographyPresets } from '../tokens/typography';
-
-type Theme = typeof obsidiana;
 
 type Props = {
   title: string;
   subtitle?: string;
-  theme?: Theme;
+  theme?: InstitutionalTheme;
   onBack?: () => void;
   rightSlot?: React.ReactNode;
   style?: ViewStyle;

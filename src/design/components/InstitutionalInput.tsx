@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TextInputProps, ViewStyle } from 'react-native';
 import { obsidiana } from '../themes/obsidiana';
+import type { InstitutionalTheme } from '../themes/types';
 import { typographyPresets, fontFamily } from '../tokens/typography';
-
-type Theme = typeof obsidiana;
 
 type Props = TextInputProps & {
   label?: string;
   hint?: string;
   error?: string;
-  theme?: Theme;
+  theme?: InstitutionalTheme;
   containerStyle?: ViewStyle;
   rightElement?: React.ReactNode;
 };

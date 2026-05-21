@@ -9,12 +9,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { obsidiana } from '../themes/obsidiana';
-
-type Theme = typeof obsidiana;
+import type { InstitutionalTheme } from '../themes/types';
 
 type Props = {
   children: React.ReactNode;
-  theme?: Theme;
+  theme?: InstitutionalTheme;
   scrollable?: boolean;
   avoidKeyboard?: boolean;
   style?: ViewStyle;

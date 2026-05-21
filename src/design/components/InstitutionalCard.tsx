@@ -1,11 +1,10 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import { obsidiana } from '../themes/obsidiana';
-
-type Theme = typeof obsidiana;
+import type { InstitutionalTheme } from '../themes/types';
 
 type Props = {
-  theme?: Theme;
+  theme?: InstitutionalTheme;
   children: React.ReactNode;
   style?: ViewStyle;
   elevated?: boolean;
