@@ -1,5 +1,6 @@
 import { AppState, AppStateStatus } from 'react-native';
 import { checkAppLock } from './appLockGuardian';
+import { emitChatUnreadRefresh } from '../events/chatUnreadBus';
 
 let isCoordinatorStarted = false;
 let isForegroundGuardRunning = false;
@@ -41,6 +42,9 @@ export function startAuthForegroundCoordinator() {
     AppState.addEventListener('change', (state: AppStateStatus) => {
         if (state === 'active') {
             handleForegroundState();
+            // Refresh de unread independente do app lock —
+            // o hook tem guard próprio contra requisições paralelas.
+            emitChatUnreadRefresh();
         }
     });
 }
