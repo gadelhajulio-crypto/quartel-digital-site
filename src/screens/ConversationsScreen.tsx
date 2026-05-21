@@ -1,9 +1,9 @@
-// RCC Wave 2d — Lista Institucional de Conversas
+// RCC Wave 2d / Wave 3b — Lista Institucional de Conversas
 // Fonte única: v_chat_conversas_recruta via loadConversas().
 // Frontend renderiza. Banco é verdade.
 // Sem realtime, sem subscriptions, sem polling automático.
 
-import React, { useState, useCallback, useEffect, memo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, memo } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,8 @@ import { tatico } from '../design/themes/tatico';
 import { typographyPresets } from '../design/tokens/typography';
 import { spacing } from '../design/tokens/spacing';
 import { radius } from '../design/tokens/radius';
+
+const PAGE_SIZE = 20;
 
 // Avatares locais: fallback garantido para todos os instrutores canônicos
 const LOCAL_AVATARS: Record<string, any> = {
@@ -179,6 +181,11 @@ export default function ConversationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Paginação Wave 3b
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const isLoadingMoreRef = useRef(false);
+
   // Mapa codigo → instrutor (para resolver avatar via slug visual)
   const instructorByCode = React.useMemo(() => {
     const map: Record<string, typeof instructors[0]> = {};
@@ -193,9 +200,12 @@ export default function ConversationsScreen() {
       setLoading(true);
     }
     setError(null);
+    // Reset de paginação no carregamento inicial e no refresh
+    isLoadingMoreRef.current = false;
     try {
-      const data = await loadConversas();
+      const data = await loadConversas({ limit: PAGE_SIZE });
       setConversas(data);
+      setHasMore(data.length >= PAGE_SIZE);
       console.log('[CHAT_LIST_W2]', isRefresh ? 'conversations_refresh' : 'conversations_loaded', {
         count: data.length,
       });
@@ -210,6 +220,32 @@ export default function ConversationsScreen() {
       setRefreshing(false);
     }
   }, []);
+
+  const loadMoreConversas = useCallback(async () => {
+    if (!hasMore || isLoadingMoreRef.current) return;
+    isLoadingMoreRef.current = true;
+    setLoadingMore(true);
+    console.log('[CHAT_LIST_W3B] load_more');
+    try {
+      // Cursor: updated_at da última conversa carregada (mais antiga visível)
+      const cursor = conversas[conversas.length - 1]?.updated_at;
+      if (!cursor) { setHasMore(false); return; }
+      const more = await loadConversas({ before: cursor, limit: PAGE_SIZE });
+      if (more.length === 0) {
+        setHasMore(false);
+        console.log('[CHAT_LIST_W3B] end_reached');
+        return;
+      }
+      setConversas((prev) => [...prev, ...more]);
+      setHasMore(more.length >= PAGE_SIZE);
+      console.log('[CHAT_LIST_W3B] page_loaded', { count: more.length });
+    } catch {
+      console.warn('[CHAT_LIST_W3B] load_more_error');
+    } finally {
+      setLoadingMore(false);
+      isLoadingMoreRef.current = false;
+    }
+  }, [hasMore, conversas]);
 
   useEffect(() => {
     fetchConversas(false);
@@ -298,6 +334,8 @@ export default function ConversationsScreen() {
           )}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          onEndReached={loadMoreConversas}
+          onEndReachedThreshold={0.3}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -307,6 +345,20 @@ export default function ConversationsScreen() {
             />
           }
           ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.footerRow}>
+                <ActivityIndicator size="small" color={glowColor} />
+                <Text style={[typographyPresets.label, styles.footerText]}>
+                  Carregando registros operacionais…
+                </Text>
+              </View>
+            ) : !hasMore && conversas.length >= PAGE_SIZE ? (
+              <Text style={[typographyPresets.label, styles.footerEnd]}>
+                Fim das conversas registradas.
+              </Text>
+            ) : null
+          }
         />
       )}
     </View>
@@ -346,6 +398,23 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: spacing.s,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.m,
+    gap: spacing.s,
+  },
+  footerText: {
+    color: tatico.colors.muted,
+    letterSpacing: 1,
+  },
+  footerEnd: {
+    textAlign: 'center',
+    color: tatico.colors.muted,
+    letterSpacing: 1,
+    paddingVertical: spacing.m,
   },
 });
 

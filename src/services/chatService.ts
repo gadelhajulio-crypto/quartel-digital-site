@@ -109,12 +109,22 @@ export const CHAT_TIMEOUT_MS = 35_000;
 
 // ── Views RCC (leitura) ────────────────────────────────────────────────────────
 
-export async function loadConversas(): Promise<ChatConversa[]> {
-  const { data, error } = await supabase
+export async function loadConversas(
+  options?: { before?: string; limit?: number },
+): Promise<ChatConversa[]> {
+  const limit = options?.limit ?? 20;
+
+  let query = supabase
     .from('v_chat_conversas_recruta')
     .select('*')
-    .order('last_message_at', { ascending: false, nullsFirst: false });
+    .order('updated_at', { ascending: false, nullsFirst: false })
+    .limit(limit);
 
+  if (options?.before) {
+    query = query.lt('updated_at', options.before);
+  }
+
+  const { data, error } = await query;
   if (error) throw new ChatError('server', error.message);
   return (data ?? []) as ChatConversa[];
 }
