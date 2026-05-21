@@ -11,6 +11,8 @@ export default function StackLayout() {
         >
             {/* Seletor de instrutor usa header institucional próprio */}
             <Stack.Screen name="instructor/select" options={{ headerShown: false }} />
+            {/* Lista institucional de conversas usa header institucional próprio */}
+            <Stack.Screen name="conversations/index" options={{ headerShown: false }} />
         </Stack>
     );
 }

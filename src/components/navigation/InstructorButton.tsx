@@ -52,7 +52,7 @@ export default function InstructorButton() {
       router.push('/(stack)/instructor/select' as any);
       return;
     }
-    router.push('/(tabs)/chat' as any);
+    router.push('/(stack)/conversations' as any);
   }
 
   return (
