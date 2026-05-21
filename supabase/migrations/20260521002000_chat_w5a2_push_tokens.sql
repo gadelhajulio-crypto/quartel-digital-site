@@ -17,15 +17,6 @@
 -- ==============================================================================
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 0. DROP PREVENTIVO
--- ─────────────────────────────────────────────────────────────────────────────
-
-DROP TRIGGER   IF EXISTS trg_push_tokens_updated_at ON public.recruta_push_tokens;
-DROP FUNCTION  IF EXISTS public.fn_push_tokens_updated_at() CASCADE;
-DROP FUNCTION  IF EXISTS public.rpc_register_push_token(TEXT, TEXT) CASCADE;
-DROP TABLE     IF EXISTS public.recruta_push_tokens CASCADE;
-
--- ─────────────────────────────────────────────────────────────────────────────
 -- 1. TABELA
 -- ─────────────────────────────────────────────────────────────────────────────
 
