@@ -39,6 +39,7 @@ import { spacing } from '../design/tokens/spacing';
 import { radius } from '../design/tokens/radius';
 
 const BOTTOMBAR_HEIGHT = Platform.OS === 'ios' ? 75 : 66;
+const PAGE_SIZE = 30;
 
 // ── Mensagem local (apenas visual — nunca persistida como 'sending') ───────────
 
@@ -309,6 +310,12 @@ export default function ChatScreen() {
 
   const flatListRef = useRef<FlatList>(null);
 
+  // Paginação Wave 2c
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [oldestCursor, setOldestCursor] = useState<string | null>(null);
+  const isLoadingOlderRef = useRef(false);
+
   // ── Inicialização: abrir conversa existente ──────────────────────────────────
 
   useEffect(() => {
@@ -340,8 +347,10 @@ export default function ChatScreen() {
   async function fetchMensagens(cid: string) {
     setMessagesLoading(true);
     try {
-      const msgs = await loadMensagens(cid);
+      const msgs = await loadMensagens(cid, { limit: PAGE_SIZE });
       setMensagens(msgs);
+      setHasMore(msgs.length >= PAGE_SIZE);
+      setOldestCursor(msgs.length > 0 ? msgs[0].created_at : null);
       // Remover mensagens locais cujos client_message_id já estão no DB
       const dbIds = new Set(msgs.map((m) => m.client_message_id).filter(Boolean));
       setLocalMessages((prev) =>
@@ -352,6 +361,34 @@ export default function ChatScreen() {
       console.warn('[CHAT_W1] fetch_messages_error', err);
     } finally {
       setMessagesLoading(false);
+    }
+  }
+
+  async function loadOlderMessages() {
+    if (!conversaId || !hasMore || isLoadingOlderRef.current || !oldestCursor) return;
+    isLoadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const older = await loadMensagens(conversaId, { before: oldestCursor, limit: PAGE_SIZE });
+      if (older.length === 0) {
+        setHasMore(false);
+        return;
+      }
+      setMensagens((prev) => [...older, ...prev]);
+      setOldestCursor(older[0].created_at);
+      setHasMore(older.length >= PAGE_SIZE);
+    } catch {
+      setSendError('Não foi possível carregar registros anteriores.');
+    } finally {
+      setLoadingOlder(false);
+      isLoadingOlderRef.current = false;
+    }
+  }
+
+  function handleListScroll(event: any) {
+    const y = event.nativeEvent.contentOffset.y;
+    if (y < 80 && hasMore && !isLoadingOlderRef.current) {
+      loadOlderMessages();
     }
   }
 
@@ -643,8 +680,20 @@ export default function ChatScreen() {
             renderItem={renderItem}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
-            onContentSizeChange={() =>
-              flatListRef.current?.scrollToEnd({ animated: false })
+            maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
+            onScroll={handleListScroll}
+            scrollEventThrottle={200}
+            ListHeaderComponent={
+              loadingOlder ? (
+                <View style={styles.olderLoadingRow}>
+                  <ActivityIndicator size="small" color={glowColor} />
+                  <Text style={[typographyPresets.label, styles.olderLoadingText]}>
+                    Carregando registros anteriores…
+                  </Text>
+                </View>
+              ) : !hasMore && mensagens.length > 0 ? (
+                <SystemMessage text="Início do registro operacional." />
+              ) : null
             }
             keyboardShouldPersistTaps="handled"
           />
@@ -731,6 +780,17 @@ const styles = StyleSheet.create({
   processingWrapper: {
     paddingHorizontal: spacing.m,
     paddingBottom: spacing.xs,
+  },
+  olderLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.s,
+    gap: spacing.s,
+  },
+  olderLoadingText: {
+    color: tatico.colors.muted,
+    letterSpacing: 1,
   },
   composer: {
     flexDirection: 'row',

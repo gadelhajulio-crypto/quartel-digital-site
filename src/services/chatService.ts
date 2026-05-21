@@ -116,15 +116,27 @@ export async function loadConversas(): Promise<ChatConversa[]> {
   return (data ?? []) as ChatConversa[];
 }
 
-export async function loadMensagens(conversa_id: string): Promise<ChatMensagem[]> {
-  const { data, error } = await supabase
+export async function loadMensagens(
+  conversa_id: string,
+  options?: { before?: string; limit?: number },
+): Promise<ChatMensagem[]> {
+  const limit = options?.limit ?? 30;
+
+  let query = supabase
     .from('v_chat_mensagens_recruta')
     .select('*')
     .eq('conversa_id', conversa_id)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: false })
+    .limit(limit);
 
+  if (options?.before) {
+    query = query.lt('created_at', options.before);
+  }
+
+  const { data, error } = await query;
   if (error) throw new ChatError('server', error.message);
-  return (data ?? []) as ChatMensagem[];
+  // Banco retorna DESC (página mais recente). Inverter para ASC no frontend.
+  return ((data ?? []) as ChatMensagem[]).reverse();
 }
 
 export async function loadUnreadStatus(): Promise<ChatUnreadStatus[]> {
