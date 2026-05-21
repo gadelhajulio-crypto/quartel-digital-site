@@ -7,6 +7,7 @@ import { getBillingStatus } from '../../services/billingService';
 import { getOnboardingStatus } from '../../services/onboardingService';
 import { BootstrapGateContext } from '../../context/BootstrapGateContext';
 import { SplashCinematic } from '../splash/SplashCinematic';
+import { usePushToken } from '../../hooks/usePushToken';
 
 export type BootstrapState = 'idle' | 'loading' | 'ready' | 'failed';
 
@@ -50,6 +51,9 @@ export function BootstrapGate({ children }: { children: React.ReactNode }) {
 
   // Usuário autenticado: pula o cinematic completo
   const forceFinishSplash = !authLoading && authStatus === 'authenticated';
+
+  // Registrar push token após auth + onboarding + billing confirmados (Wave 5a-3)
+  usePushToken(bootstrapState === 'ready' && destination === 'tabs');
 
   console.log('[BOOTSTRAP_GATE] render', {
     authLoading,

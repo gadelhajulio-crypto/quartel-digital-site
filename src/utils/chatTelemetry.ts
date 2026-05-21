@@ -28,7 +28,12 @@ export type ChatC5Event =
   | 'conversations_load_failed'
   | 'pagination_loaded'
   | 'pagination_end'
-  | 'pagination_failed';
+  | 'pagination_failed'
+  | 'push_permission_checked'
+  | 'push_permission_denied'
+  | 'push_token_registered'
+  | 'push_token_register_failed'
+  | 'push_skipped_not_device';
 
 // Campos permitidos — TypeScript impede campos proibidos em tempo de compilação
 export type ChatC5Meta = {
