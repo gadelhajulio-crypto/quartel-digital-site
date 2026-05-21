@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { logChatEvent } from '../utils/chatTelemetry';
 
 const DRAFT_KEY_PREFIX = 'chat_draft:';
 const DEBOUNCE_MS = 400;
@@ -36,7 +37,7 @@ export function useChatDraft(instructorSlug: string | null) {
         if (value && value.trim()) {
           setDraft(value);
           setRestored(true);
-          console.log('[CHAT_DRAFT_W3] draft_restored', { instrutor_slug: instructorSlug });
+          logChatEvent('draft_restored', { instrutor_codigo: instructorSlug });
         }
       })
       .catch(() => {
@@ -57,10 +58,10 @@ export function useChatDraft(instructorSlug: string | null) {
         try {
           if (text.trim()) {
             await SecureStore.setItemAsync(`${DRAFT_KEY_PREFIX}${instructorSlug}`, text);
-            console.log('[CHAT_DRAFT_W3] draft_saved', { instrutor_slug: instructorSlug });
+            logChatEvent('draft_saved', { instrutor_codigo: instructorSlug });
           } else {
             await SecureStore.deleteItemAsync(`${DRAFT_KEY_PREFIX}${instructorSlug}`);
-            console.log('[CHAT_DRAFT_W3] draft_cleared', { instrutor_slug: instructorSlug });
+            logChatEvent('draft_cleared', { instrutor_codigo: instructorSlug });
           }
         } catch {
           // Falha silenciosa
@@ -80,7 +81,7 @@ export function useChatDraft(instructorSlug: string | null) {
     if (!instructorSlug) return;
     try {
       await SecureStore.deleteItemAsync(`${DRAFT_KEY_PREFIX}${instructorSlug}`);
-      console.log('[CHAT_DRAFT_W3] draft_cleared', { instrutor_slug: instructorSlug });
+      logChatEvent('draft_cleared', { instrutor_codigo: instructorSlug });
     } catch {
       // Falha silenciosa
     }

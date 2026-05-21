@@ -18,6 +18,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 import { loadConversas, type ChatConversa } from '../services/chatService';
+import { logChatEvent } from '../utils/chatTelemetry';
 import { useInstructors } from '../hooks/useInstructors';
 import { InstitutionalHeader } from '../design/components/InstitutionalHeader';
 import { tatico } from '../design/themes/tatico';
@@ -206,15 +207,15 @@ export default function ConversationsScreen() {
       const data = await loadConversas({ limit: PAGE_SIZE });
       setConversas(data);
       setHasMore(data.length >= PAGE_SIZE);
-      console.log('[CHAT_LIST_W2]', isRefresh ? 'conversations_refresh' : 'conversations_loaded', {
+      logChatEvent('conversations_loaded', {
         count: data.length,
-      });
-      console.log('[CHAT_LIST_W3] preview_loaded', {
         with_preview: data.filter((c) => !!c.last_message_preview).length,
+        is_refresh: isRefresh,
+        has_more: data.length >= PAGE_SIZE,
       });
     } catch {
       setError('Falha ao carregar registros institucionais.');
-      console.warn('[CHAT_LIST_W2] conversations_error');
+      logChatEvent('conversations_load_failed');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -225,7 +226,6 @@ export default function ConversationsScreen() {
     if (!hasMore || isLoadingMoreRef.current) return;
     isLoadingMoreRef.current = true;
     setLoadingMore(true);
-    console.log('[CHAT_LIST_W3B] load_more');
     try {
       // Cursor: updated_at da última conversa carregada (mais antiga visível)
       const cursor = conversas[conversas.length - 1]?.updated_at;
@@ -233,14 +233,14 @@ export default function ConversationsScreen() {
       const more = await loadConversas({ before: cursor, limit: PAGE_SIZE });
       if (more.length === 0) {
         setHasMore(false);
-        console.log('[CHAT_LIST_W3B] end_reached');
+        logChatEvent('pagination_end');
         return;
       }
       setConversas((prev) => [...prev, ...more]);
       setHasMore(more.length >= PAGE_SIZE);
-      console.log('[CHAT_LIST_W3B] page_loaded', { count: more.length });
+      logChatEvent('pagination_loaded', { count: more.length, has_more: more.length >= PAGE_SIZE });
     } catch {
-      console.warn('[CHAT_LIST_W3B] load_more_error');
+      logChatEvent('pagination_failed');
     } finally {
       setLoadingMore(false);
       isLoadingMoreRef.current = false;

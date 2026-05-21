@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { loadConversas } from '../services/chatService';
+import { logChatEvent } from '../utils/chatTelemetry';
 
 export function useChatUnread(instructorSlug: string | null) {
   const [unreadCount, setUnreadCount] = useState<number>(0);
@@ -18,10 +19,7 @@ export function useChatUnread(instructorSlug: string | null) {
       const conversas = await loadConversas();
       const conversa = conversas.find((c) => c.instrutor_slug === instructorSlug);
       const count = conversa?.unread_count ?? 0;
-      console.log('[CHAT_UNREAD_W2] unread_loaded', {
-        instrutor_slug: instructorSlug,
-        unread_count:   count,
-      });
+      logChatEvent('unread_loaded', { instrutor_codigo: instructorSlug, count });
       setUnreadCount(count);
     } catch {
       // Falha silenciosa — badge e informativo, nao bloqueia UX

@@ -4,6 +4,7 @@
 // Nunca escreve tabelas diretamente. Nunca calcula unread.
 
 import { supabase } from '../lib/supabase';
+import { logChatEvent } from '../utils/chatTelemetry';
 
 // ── Tipos RCC Wave 1 ───────────────────────────────────────────────────────────
 
@@ -177,8 +178,6 @@ export async function loadInstructors(): Promise<InstructorApp[]> {
 export async function openConversationRpc(
   instrutor_slug: string,
 ): Promise<{ conversa_id: string; status: string } | null> {
-  console.log('[CHAT_W1] load_conversation_start', { instrutor_slug });
-
   const { data, error } = await supabase.rpc('rpc_chat_open_conversation', {
     p_instrutor_slug: instrutor_slug,
   });
@@ -201,13 +200,6 @@ export async function sendMessageW1(payload: ChatPayloadW1): Promise<PersistedMe
   if (!payload.text.trim()) {
     throw new ChatError('validation', 'Mensagem vazia.');
   }
-
-  console.log('[CHAT_W1] load_messages_start', {
-    hasClientMessageId: !!payload.client_message_id,
-    hasSessionId: !!payload.session_id,
-    instrutor_slug: payload.instrutor_slug,
-    source: payload.source,
-  });
 
   const invocation = supabase.functions.invoke('instrutor-send', {
     body: {
@@ -244,12 +236,10 @@ export async function sendMessageW1(payload: ChatPayloadW1): Promise<PersistedMe
       }
     } catch {}
 
-    console.warn('[CHAT_W1] edge_function_error', {
-      status:             (error as any)?.context?.status ?? (error as any)?.status ?? null,
-      reason:             _bodyJson?.reason              ?? null,
-      detail:             _bodyJson?.detail              ?? null,
-      central_request_id: _bodyJson?.central_request_id ?? null,
-      ef_request_id:      _bodyJson?.request_id         ?? null,
+    logChatEvent('message_send_failed', {
+      error_code: String(_bodyJson?.reason ?? (error as any)?.context?.status ?? 'ef_error'),
+      status:     String((error as any)?.context?.status ?? ''),
+      correlation_id: (_bodyJson?.central_request_id as string) ?? null,
     });
     throw new ChatError('server', 'Falha na comunicação com o QG. Tente novamente.');
   }
@@ -272,7 +262,7 @@ export async function sendMessageW1(payload: ChatPayloadW1): Promise<PersistedMe
   if (!data?.ok) {
     if (reason === 'persist_failed' && data?.assistant_text) {
       // Resposta gerada mas não persistida — retornar para o usuário ver
-      console.warn('[CHAT_W1] persist_failed_partial_response');
+      logChatEvent('message_send_failed', { error_code: 'persist_failed' });
       return {
         assistant_text: data.assistant_text as string,
         correlation_id: data.correlation_id as string ?? '',

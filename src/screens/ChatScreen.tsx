@@ -30,6 +30,7 @@ import {
 import { FORCE_GLOW, DEFAULT_GLOW } from '../constants/instructors';
 import { useInstructors } from '../hooks/useInstructors';
 import { useChatDraft } from '../hooks/useChatDraft';
+import { logChatEvent, conversaPrefix } from '../utils/chatTelemetry';
 import { InstitutionalHeader } from '../design/components/InstitutionalHeader';
 import { InstitutionalInput } from '../design/components/InstitutionalInput';
 import { InstitutionalBadge } from '../design/components/InstitutionalBadge';
@@ -346,12 +347,18 @@ export default function ChatScreen() {
           setConversaId(result.conversa_id);
           await fetchMensagens(result.conversa_id);
           await tryMarkRead(result.conversa_id);
+          logChatEvent('chat_opened', {
+            instrutor_codigo: instructorSlug,
+            conversa_id_prefix: conversaPrefix(result.conversa_id),
+            status: result.status,
+          });
         }
       } catch (err) {
         // Sem conversa ainda — estado vazio é válido
-        console.log('[CHAT_W1] no_existing_conversation', {
-          instrutor_slug: instructorSlug,
-          err: err instanceof ChatError ? err.code : String(err),
+        logChatEvent('chat_opened', {
+          instrutor_codigo: instructorSlug,
+          status: 'no_conversation',
+          error_code: err instanceof ChatError ? err.code : 'unknown',
         });
       } finally {
         setConversaLoading(false);
@@ -374,8 +381,14 @@ export default function ChatScreen() {
         prev.filter((lm) => !dbIds.has(lm.client_message_id) || lm.status === 'failed'),
       );
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 80);
+      logChatEvent('messages_loaded', {
+        count: msgs.length,
+        has_more: msgs.length >= PAGE_SIZE,
+      });
     } catch (err) {
-      console.warn('[CHAT_W1] fetch_messages_error', err);
+      logChatEvent('messages_load_failed', {
+        error_code: err instanceof ChatError ? err.code : 'unknown',
+      });
     } finally {
       setMessagesLoading(false);
     }
@@ -460,6 +473,7 @@ export default function ChatScreen() {
       setIsSending(true);
       pendingRetry.current = null;
 
+      logChatEvent('message_send_started', { instrutor_codigo: instructorSlug });
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
 
       const idempotency_key = `chat:${recrutaId}:${clientMsgId}`;
@@ -486,8 +500,13 @@ export default function ChatScreen() {
         // tryMarkRead após fetchMensagens: zera unread_count no banco após leitura.
         // Garante que o badge do BottomBar reflita "lido" sem realtime.
         if (cid) {
+          logChatEvent('message_send_succeeded', {
+            instrutor_codigo: instructorSlug,
+            conversa_id_prefix: conversaPrefix(cid),
+            correlation_id: result.correlation_id,
+          });
           await fetchMensagens(cid);
-          console.log('[CHAT_UNREAD_W2] unread_refresh', { instrutor_slug: instructorSlug });
+          logChatEvent('unread_cleared', { instrutor_codigo: instructorSlug });
           await tryMarkRead(cid);
         } else {
           // Persistência parcial: mostrar resposta mas marcar como não persistida
@@ -522,6 +541,10 @@ export default function ChatScreen() {
           ),
         );
 
+        logChatEvent('message_send_failed', {
+          instrutor_codigo: instructorSlug,
+          error_code: err instanceof ChatError ? err.code : 'unknown',
+        });
         setSendError(errorMsg);
         pendingRetry.current = { text: trimmed, client_message_id: clientMsgId };
       } finally {
