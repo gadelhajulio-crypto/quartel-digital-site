@@ -47,6 +47,17 @@ function relativeTime(isoString: string | null): string {
   return new Date(isoString).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
+// ── Preview institucional ─────────────────────────────────────────────────────
+
+function formatPreview(role: 'user' | 'assistant' | null, preview: string | null): string {
+  if (!preview) return 'Nenhum registro textual disponível.';
+  const text = preview.trim();
+  if (!text) return 'Nenhum registro textual disponível.';
+  if (role === 'user')      return `Você: ${text}`;
+  if (role === 'assistant') return `Instrutor: ${text}`;
+  return text;
+}
+
 // ── Card de conversa ──────────────────────────────────────────────────────────
 
 type CardProps = {
@@ -121,12 +132,13 @@ const ConversationCard = memo(function ConversationCard({
           <Text
             style={[
               typographyPresets.label,
-              cardStyles.subtitle,
-              { color: tatico.colors.muted },
+              cardStyles.preview,
+              { color: hasUnread ? tatico.colors.text : tatico.colors.muted },
             ]}
             numberOfLines={1}
+            ellipsizeMode="tail"
           >
-            {conversa.instrutor_titulo}
+            {formatPreview(conversa.last_message_role, conversa.last_message_preview)}
           </Text>
 
           {conversa.unread_count > 0 && (
@@ -186,6 +198,9 @@ export default function ConversationsScreen() {
       setConversas(data);
       console.log('[CHAT_LIST_W2]', isRefresh ? 'conversations_refresh' : 'conversations_loaded', {
         count: data.length,
+      });
+      console.log('[CHAT_LIST_W3] preview_loaded', {
+        with_preview: data.filter((c) => !!c.last_message_preview).length,
       });
     } catch {
       setError('Falha ao carregar registros institucionais.');
@@ -384,9 +399,9 @@ const cardStyles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  subtitle: {
+  preview: {
     flex: 1,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
     marginRight: spacing.s,
   },
   badge: {

@@ -37,6 +37,9 @@ export type ChatConversa = {
   opened_at: string | null;
   last_message_at: string | null;
   updated_at: string;
+  // Wave 3a: preview da última mensagem — vem truncado do banco (LEFT 120)
+  last_message_preview: string | null;
+  last_message_role: 'user' | 'assistant' | null;
 };
 
 export type ChatMensagem = {
