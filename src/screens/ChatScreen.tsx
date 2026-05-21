@@ -29,6 +29,7 @@ import {
 } from '../services/chatService';
 import { FORCE_GLOW, DEFAULT_GLOW } from '../constants/instructors';
 import { useInstructors } from '../hooks/useInstructors';
+import { useChatDraft } from '../hooks/useChatDraft';
 import { InstitutionalHeader } from '../design/components/InstitutionalHeader';
 import { InstitutionalInput } from '../design/components/InstitutionalInput';
 import { InstitutionalBadge } from '../design/components/InstitutionalBadge';
@@ -293,6 +294,13 @@ export default function ChatScreen() {
   const sessionId = useRef(Crypto.randomUUID()).current;
   const recrutaId = profile?.id ?? '';
 
+  // Draft local não-autoritativo Wave 3c
+  const { draft, restored, saveDraft, clearDraft } = useChatDraft(
+    instructorOk ? instructorSlug : null,
+  );
+  // Flag para mostrar hint de restauração apenas uma vez
+  const [showDraftHint, setShowDraftHint] = useState(false);
+
   // Estado da conversa (DB)
   const [conversaId, setConversaId] = useState<string | null>(null);
   const [mensagens, setMensagens] = useState<ChatMensagem[]>([]);
@@ -315,6 +323,15 @@ export default function ChatScreen() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [oldestCursor, setOldestCursor] = useState<string | null>(null);
   const isLoadingOlderRef = useRef(false);
+
+  // Restaurar draft no input assim que for carregado do storage (ocorre uma vez)
+  useEffect(() => {
+    if (restored && draft && !inputText) {
+      setInputText(draft);
+      setShowDraftHint(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restored]);
 
   // ── Inicialização: abrir conversa existente ──────────────────────────────────
 
@@ -438,6 +455,8 @@ export default function ChatScreen() {
       };
       setLocalMessages((prev) => [...prev, localMsg]);
       setInputText('');
+      setShowDraftHint(false);
+      clearDraft(); // draft limpo no momento do envio — não aguarda confirmação
       setIsSending(true);
       pendingRetry.current = null;
 
@@ -705,6 +724,15 @@ export default function ChatScreen() {
           </View>
         )}
 
+        {/* Indicador de rascunho recuperado — discreto, desaparece ao digitar */}
+        {showDraftHint && (
+          <View style={[styles.draftHint, { borderTopColor: tatico.colors.border }]}>
+            <Text style={[typographyPresets.label, { color: tatico.colors.muted, letterSpacing: 1 }]}>
+              Rascunho recuperado.
+            </Text>
+          </View>
+        )}
+
         {/* Compositor */}
         <View
           style={[
@@ -719,7 +747,11 @@ export default function ChatScreen() {
             theme={tatico}
             placeholder="Digite sua mensagem institucional..."
             value={inputText}
-            onChangeText={setInputText}
+            onChangeText={(text) => {
+              setInputText(text);
+              setShowDraftHint(false);
+              saveDraft(text);
+            }}
             multiline
             containerStyle={styles.inputContainer}
             style={styles.inputField}
@@ -791,6 +823,11 @@ const styles = StyleSheet.create({
   olderLoadingText: {
     color: tatico.colors.muted,
     letterSpacing: 1,
+  },
+  draftHint: {
+    paddingHorizontal: spacing.m,
+    paddingVertical: spacing.xs,
+    borderTopWidth: 1,
   },
   composer: {
     flexDirection: 'row',
