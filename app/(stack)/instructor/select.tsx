@@ -4,12 +4,13 @@
 // Sem ScrollView. Sem duplicação de array. Apenas 3 cards reais.
 // Persistência: rpc_update_instructor_profile(p_instructor_profile_id=slug).
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   ActivityIndicator,
   Dimensions,
   Image,
+  InteractionManager,
   PanResponder,
   Platform,
   StyleSheet,
@@ -70,35 +71,139 @@ const CARD_ASSETS = {
   sara:  require('../../../assets/instructors/cards/sara-card-selected.png'),
 } as const;
 
-// ── SlotImages ───────────────────────────────────────────────────────────────
-// Pré-monta 3 imagens (uma por instrutor) para cada slot.
-// Somente o instrutor ativo tem opacity:1; os demais ficam opacity:0.
-// Trocar de instrutor = toggle de opacidade em imagem já carregada → zero flash.
-// Nunca desmonta, nunca troca source, nunca retorna null.
-const SLUGS = ['ramos', 'rocha', 'sara'] as const;
+// ── Tipos compartilhados ─────────────────────────────────────────────────────
+type UxState  = 'idle' | 'saving' | 'error';
+type DragDir  = 'left' | 'right' | null;
+type CardRole = 'left' | 'center' | 'right';
 
-function SlotImages({ activeSlug }: { activeSlug: string }) {
+// ── InstructorInfoPanel ───────────────────────────────────────────────────────
+// React.memo: re-renderiza SOMENTE quando displayedInstructor muda (após InteractionManager).
+// Completamente isolado do deck — atualização de texto não dispara repaint nos cards.
+type InfoPanelProps = {
+  instructor: { titulo?: string | null; nome?: string | null; descricao?: string | null } | null;
+};
+const InstructorInfoPanel = React.memo(function InstructorInfoPanel({ instructor }: InfoPanelProps) {
   return (
-    <>
-      {SLUGS.map((slug) => (
-        <Image
-          key={slug}
-          source={CARD_ASSETS[slug]}
-          style={[
-            StyleSheet.absoluteFillObject,
-            { width: POSTER_WIDTH, height: POSTER_HEIGHT, opacity: slug === activeSlug ? 1 : 0 },
-          ]}
-          resizeMode="contain"
-          fadeDuration={0}
-        />
-      ))}
-    </>
+    <View style={styles.labelArea}>
+      <Text style={[typographyPresets.label, { color: tatico.colors.accent }]} numberOfLines={1}>
+        {instructor?.titulo ?? ''}
+      </Text>
+      <Text
+        style={[typographyPresets.sectionTitle, { color: tatico.colors.text, marginTop: 2 }]}
+        numberOfLines={1}
+      >
+        {instructor?.nome ?? ''}
+      </Text>
+      {instructor?.descricao ? (
+        <Text
+          style={[typographyPresets.bodySmall, { color: tatico.colors.textSecondary, marginTop: 4 }]}
+          numberOfLines={2}
+          ellipsizeMode="tail"
+        >
+          {instructor.descricao}
+        </Text>
+      ) : null}
+    </View>
   );
-}
+});
+
+// ── InstructorDeckMemo ────────────────────────────────────────────────────────
+// React.memo: re-renderiza SOMENTE quando visualCenterIndex ou dragDir muda.
+// NÃO recebe titulo, nome, descricao — zero acoplamento com dados textuais.
+// Interpolações criadas internamente via useMemo (swipeX é ref estável → executam uma vez).
+// Cada card instructor tem key={slug} fixo → nunca remontado, source nunca muda.
+type DeckInstructor = { slug: string };
+type DeckMemoProps = {
+  instructors: DeckInstructor[];
+  N: number;
+  visualCenterIndex: number;
+  swipeX: Animated.Value;
+  dragDir: DragDir;
+  panHandlers: { [key: string]: (...args: any[]) => any };
+};
+const InstructorDeckMemo = React.memo(function InstructorDeck({
+  instructors,
+  N,
+  visualCenterIndex,
+  swipeX,
+  dragDir,
+  panHandlers,
+}: DeckMemoProps) {
+  // Interpolações: criadas uma única vez (swipeX nunca muda de referência).
+  const centerTransX = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: [-B_X, 0, B_X],        extrapolate: 'clamp' }), [swipeX]);
+  const centerTransY = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: [B_Y, 0, B_Y],          extrapolate: 'clamp' }), [swipeX]);
+  const centerScale  = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: [B_SCALE, 1.0, B_SCALE], extrapolate: 'clamp' }), [swipeX]);
+  const centerOpacity= useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: [B_OPACITY, 1.0, B_OPACITY], extrapolate: 'clamp' }), [swipeX]);
+  const centerRotate = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: ['-4deg', '0deg', '4deg'], extrapolate: 'clamp' }), [swipeX]);
+
+  const rightTransX  = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: [0, B_X, B_X],           extrapolate: 'clamp' }), [swipeX]);
+  const rightTransY  = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: [0, B_Y, B_Y],           extrapolate: 'clamp' }), [swipeX]);
+  const rightScale   = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: [1.0, B_SCALE, B_SCALE],  extrapolate: 'clamp' }), [swipeX]);
+  const rightOpacity = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: [1.0, B_OPACITY, B_OPACITY], extrapolate: 'clamp' }), [swipeX]);
+  const rightRotate  = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: ['0deg', '4deg', '4deg'], extrapolate: 'clamp' }), [swipeX]);
+
+  const leftTransX   = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: [-B_X, -B_X, 0],         extrapolate: 'clamp' }), [swipeX]);
+  const leftTransY   = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: [B_Y, B_Y, 0],           extrapolate: 'clamp' }), [swipeX]);
+  const leftScale    = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: [B_SCALE, B_SCALE, 1.0],  extrapolate: 'clamp' }), [swipeX]);
+  const leftOpacity  = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: [B_OPACITY, B_OPACITY, 1.0], extrapolate: 'clamp' }), [swipeX]);
+  const leftRotate   = useMemo(() => swipeX.interpolate({ inputRange: [-TRANSITION_PX, 0, TRANSITION_PX], outputRange: ['-4deg', '-4deg', '0deg'], extrapolate: 'clamp' }), [swipeX]);
+
+  function slotZIndex(role: CardRole): number {
+    if (dragDir === 'left')  return role === 'right'  ? 30 : role === 'center' ? 20 : 10;
+    if (dragDir === 'right') return role === 'left'   ? 30 : role === 'center' ? 20 : 10;
+    return role === 'center' ? 30 : 10;
+  }
+
+  return (
+    <View style={styles.deckArea} {...panHandlers}>
+      {instructors.map((instructor, i) => {
+        const asset = CARD_ASSETS[instructor.slug as keyof typeof CARD_ASSETS];
+        if (!asset) return null;
+
+        const role: CardRole =
+          i === visualCenterIndex
+            ? 'center'
+            : i === (visualCenterIndex - 1 + N) % N
+            ? 'left'
+            : 'right';
+
+        const transX = role === 'center' ? centerTransX : role === 'left' ? leftTransX  : rightTransX;
+        const transY = role === 'center' ? centerTransY : role === 'left' ? leftTransY  : rightTransY;
+        const sc     = role === 'center' ? centerScale  : role === 'left' ? leftScale   : rightScale;
+        const op     = role === 'center' ? centerOpacity: role === 'left' ? leftOpacity : rightOpacity;
+        const rot    = role === 'center' ? centerRotate : role === 'left' ? leftRotate  : rightRotate;
+
+        return (
+          <Animated.View
+            key={instructor.slug}
+            style={[
+              styles.card,
+              {
+                zIndex: slotZIndex(role),
+                transform: [
+                  { translateX: transX },
+                  { translateY: transY },
+                  { scale: sc },
+                  { rotate: rot },
+                ],
+                opacity: op,
+              },
+            ]}
+          >
+            <Image
+              source={asset}
+              style={{ width: POSTER_WIDTH, height: POSTER_HEIGHT }}
+              resizeMode="contain"
+              fadeDuration={0}
+            />
+          </Animated.View>
+        );
+      })}
+    </View>
+  );
+});
 
 // ── Screen ───────────────────────────────────────────────────────────────────
-type UxState = 'idle' | 'saving' | 'error';
-type DragDir = 'left' | 'right' | null;
 
 export default function SelectInstructorScreen() {
   const router = useRouter();
@@ -121,12 +226,23 @@ export default function SelectInstructorScreen() {
   const [errorMsg, setErrorMsg] = useState('');
   // dragDir controla zIndex durante gesto: qual card está subindo
   const [dragDir, setDragDir] = useState<DragDir>(null);
+  // displayedInstructor: fonte exclusiva de título/nome/descrição.
+  // Atualizado com InteractionManager.runAfterInteractions após a animação —
+  // garante que o re-render de texto não coincide com nenhum frame do deck.
+  const [displayedInstructor, setDisplayedInstructor] = useState<InfoPanelProps['instructor']>(null);
 
   // selectedSlug sempre derivado do centerIndex — sem estado separado
   const selectedSlug = instructors[centerIndex]?.slug ?? null;
 
   const NRef = useRef(N);
   useEffect(() => { NRef.current = N; }, [N]);
+
+  // Refs para leitura síncrona dentro dos callbacks do PanResponder
+  // (evita closures stale sem criar novos PanResponders a cada render).
+  const centerIndexRef = useRef(centerIndex);
+  useEffect(() => { centerIndexRef.current = centerIndex; }, [centerIndex]);
+  const instructorsRef = useRef(instructors);
+  useEffect(() => { instructorsRef.current = instructors; }, [instructors]);
 
   // swipeX: deslocamento bruto do gesto em pixels, clamped a [-TP, TP]
   // Negativo = swipe para esquerda (próximo), Positivo = swipe para direita (anterior)
@@ -146,6 +262,7 @@ export default function SelectInstructorScreen() {
       instructors.findIndex((i) => i.codigo === profileCodigo),
     );
     setCenterIndex(currentIdx);
+    setDisplayedInstructor(instructors[currentIdx] ?? null);
 
     console.log('[INSTRUCTOR_DECK_INIT]', {
       profileCodigo,
@@ -160,113 +277,6 @@ export default function SelectInstructorScreen() {
       if (inst.avatar_url) Image.prefetch(inst.avatar_url).catch(() => {});
     });
   }, [N]);
-
-  // ── Interpolações 3D ──────────────────────────────────────────────────────
-  //
-  // swipeX=0          → deck idle (center na frente, back-left/right atrás)
-  // swipeX=-TP        → transição completa para esquerda: right sobe ao centro
-  // swipeX=+TP        → transição completa para direita: left sobe ao centro
-  //
-  // CARD CENTRAL: sai para left-back em swipeX=-TP, para right-back em +TP
-  const centerTransX = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: [-B_X, 0, B_X],
-    extrapolate: 'clamp',
-  });
-  const centerTransY = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: [B_Y, 0, B_Y],
-    extrapolate: 'clamp',
-  });
-  const centerScale = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: [B_SCALE, 1.0, B_SCALE],
-    extrapolate: 'clamp',
-  });
-  const centerOpacity = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: [B_OPACITY, 1.0, B_OPACITY],
-    extrapolate: 'clamp',
-  });
-  const centerRotate = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: ['-4deg', '0deg', '4deg'],
-    extrapolate: 'clamp',
-  });
-
-  // CARD DIREITO (back-right): sobe ao centro em swipeX=-TP, fica parado em +TP
-  const rightTransX = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: [0, B_X, B_X],
-    extrapolate: 'clamp',
-  });
-  const rightTransY = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: [0, B_Y, B_Y],
-    extrapolate: 'clamp',
-  });
-  const rightScale = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: [1.0, B_SCALE, B_SCALE],
-    extrapolate: 'clamp',
-  });
-  const rightOpacity = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: [1.0, B_OPACITY, B_OPACITY],
-    extrapolate: 'clamp',
-  });
-  const rightRotate = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: ['0deg', '4deg', '4deg'],
-    extrapolate: 'clamp',
-  });
-
-  // CARD ESQUERDO (back-left): sobe ao centro em swipeX=+TP, fica parado em -TP
-  const leftTransX = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: [-B_X, -B_X, 0],
-    extrapolate: 'clamp',
-  });
-  const leftTransY = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: [B_Y, B_Y, 0],
-    extrapolate: 'clamp',
-  });
-  const leftScale = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: [B_SCALE, B_SCALE, 1.0],
-    extrapolate: 'clamp',
-  });
-  const leftOpacity = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: [B_OPACITY, B_OPACITY, 1.0],
-    extrapolate: 'clamp',
-  });
-  const leftRotate = swipeX.interpolate({
-    inputRange: [-TRANSITION_PX, 0, TRANSITION_PX],
-    outputRange: ['-4deg', '-4deg', '0deg'],
-    extrapolate: 'clamp',
-  });
-
-  // ── ZIndex por slot ───────────────────────────────────────────────────────
-  // dragDir determina qual card está subindo e precisa ficar acima dos outros.
-  // zIndex não é animável — controlado por estado React.
-  function slotZIndex(slot: 'center' | 'left' | 'right'): number {
-    if (dragDir === 'left') {
-      // Swipe esquerda: right sobe
-      if (slot === 'right') return 30;
-      if (slot === 'center') return 20;
-      return 10;
-    }
-    if (dragDir === 'right') {
-      // Swipe direita: left sobe
-      if (slot === 'left') return 30;
-      if (slot === 'center') return 20;
-      return 10;
-    }
-    // Idle: center no topo
-    return slot === 'center' ? 30 : 10;
-  }
 
   // ── PanResponder ──────────────────────────────────────────────────────────
   const panResponder = useRef(
@@ -307,20 +317,28 @@ export default function SelectInstructorScreen() {
 
         if (goNext && NRef.current > 1) {
           springTo(-TRANSITION_PX, () => {
-            // Ordem: atualizar centerIndex → resetar swipeX no mesmo bloco síncrono.
-            // Com imagens pré-montadas, a troca é toggle de opacidade (zero flash).
-            // setValue(0) após setState garante que o React render vê swipeX=0.
-            setCenterIndex((prev) => (prev + 1) % NRef.current);
+            const newIdx = (centerIndexRef.current + 1) % NRef.current;
+            // 1. Atualiza deck imediatamente (geometry only — InstructorDeckMemo re-renderiza).
+            setCenterIndex(newIdx);
             dragDirRef.current = null;
             setDragDir(null);
             swipeX.setValue(0);
+            // 2. Atualiza texto depois que todas as interações/animações terminaram.
+            //    InstructorInfoPanel re-renderiza em isolamento — o deck já está quieto.
+            InteractionManager.runAfterInteractions(() => {
+              setDisplayedInstructor(instructorsRef.current[newIdx] ?? null);
+            });
           });
         } else if (goPrev && NRef.current > 1) {
           springTo(TRANSITION_PX, () => {
-            setCenterIndex((prev) => (prev - 1 + NRef.current) % NRef.current);
+            const newIdx = (centerIndexRef.current - 1 + NRef.current) % NRef.current;
+            setCenterIndex(newIdx);
             dragDirRef.current = null;
             setDragDir(null);
             swipeX.setValue(0);
+            InteractionManager.runAfterInteractions(() => {
+              setDisplayedInstructor(instructorsRef.current[newIdx] ?? null);
+            });
           });
         } else {
           springTo(0, () => {
@@ -468,9 +486,6 @@ export default function SelectInstructorScreen() {
 
   // ── Derivações de render ──────────────────────────────────────────────────
   const isSaving = uxState === 'saving';
-  const centerInstructor = instructors[centerIndex] ?? null;
-  const leftInstructor = N > 0 ? instructors[(centerIndex - 1 + N) % N] : null;
-  const rightInstructor = N > 0 ? instructors[(centerIndex + 1) % N] : null;
 
   return (
     <View style={[styles.root, { backgroundColor: tatico.colors.background }]}>
@@ -499,106 +514,21 @@ export default function SelectInstructorScreen() {
         </View>
       )}
 
-      {/* ── Deck 3D ── renderiza imediatamente; skeleton cobre imagens pendentes */}
+      {/* ── Deck 3D ── */}
       {!loadingInstructors && N > 0 && (
         <>
-          {/* Identidade do instrutor central */}
-          <View style={styles.labelArea}>
-            <Text
-              style={[typographyPresets.label, { color: tatico.colors.accent }]}
-              numberOfLines={1}
-            >
-              {centerInstructor?.titulo ?? ''}
-            </Text>
-            <Text
-              style={[typographyPresets.sectionTitle, { color: tatico.colors.text, marginTop: 2 }]}
-              numberOfLines={1}
-            >
-              {centerInstructor?.nome ?? ''}
-            </Text>
-            {centerInstructor?.descricao ? (
-              <Text
-                style={[
-                  typographyPresets.bodySmall,
-                  { color: tatico.colors.textSecondary, marginTop: 4 },
-                ]}
-                numberOfLines={2}
-                ellipsizeMode="tail"
-              >
-                {centerInstructor.descricao}
-              </Text>
-            ) : null}
-          </View>
+          {/* Painel de texto — isolado do deck via React.memo + InteractionManager */}
+          <InstructorInfoPanel instructor={displayedInstructor} />
 
-          {/* Área do deck — captura gestos */}
-          <View style={styles.deckArea} {...panResponder.panHandlers}>
-
-            {/* Card esquerdo (back-left) */}
-            {leftInstructor && (
-              <Animated.View
-                key="slot-left"
-                style={[
-                  styles.card,
-                  {
-                    zIndex: slotZIndex('left'),
-                    transform: [
-                      { translateX: leftTransX },
-                      { translateY: leftTransY },
-                      { scale: leftScale },
-                      { rotate: leftRotate },
-                    ],
-                    opacity: leftOpacity,
-                  },
-                ]}
-              >
-                <SlotImages activeSlug={leftInstructor.slug} />
-              </Animated.View>
-            )}
-
-            {/* Card direito (back-right) */}
-            {rightInstructor && (
-              <Animated.View
-                key="slot-right"
-                style={[
-                  styles.card,
-                  {
-                    zIndex: slotZIndex('right'),
-                    transform: [
-                      { translateX: rightTransX },
-                      { translateY: rightTransY },
-                      { scale: rightScale },
-                      { rotate: rightRotate },
-                    ],
-                    opacity: rightOpacity,
-                  },
-                ]}
-              >
-                <SlotImages activeSlug={rightInstructor.slug} />
-              </Animated.View>
-            )}
-
-            {/* Card central (frente, selected) */}
-            {centerInstructor && (
-              <Animated.View
-                key="slot-center"
-                style={[
-                  styles.card,
-                  {
-                    zIndex: slotZIndex('center'),
-                    transform: [
-                      { translateX: centerTransX },
-                      { translateY: centerTransY },
-                      { scale: centerScale },
-                      { rotate: centerRotate },
-                    ],
-                    opacity: centerOpacity,
-                  },
-                ]}
-              >
-                <SlotImages activeSlug={centerInstructor.slug} />
-              </Animated.View>
-            )}
-          </View>
+          {/* Deck de cards físicos — isolado do texto via React.memo */}
+          <InstructorDeckMemo
+            instructors={instructors}
+            N={N}
+            visualCenterIndex={centerIndex}
+            swipeX={swipeX}
+            dragDir={dragDir}
+            panHandlers={panResponder.panHandlers}
+          />
 
           {/* Dots — exatamente N pontos, refletem o card central */}
           <View style={styles.dots}>
