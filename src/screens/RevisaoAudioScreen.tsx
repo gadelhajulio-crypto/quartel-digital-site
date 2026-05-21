@@ -1,3 +1,8 @@
+/**
+ * @deprecated Wave 4c governance cleanup
+ * Tela não roteada. Não utilizada em produção.
+ * Dependências (useRevision, AudioPlayer) são stubs.
+ */
 import { View } from 'react-native';
 import { InstitutionalError } from '../components/InstitutionalError';
 import { InstitutionalLoading } from '../components/InstitutionalLoading';

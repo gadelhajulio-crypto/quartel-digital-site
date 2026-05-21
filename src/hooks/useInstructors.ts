@@ -39,18 +39,13 @@ export function useInstructors(): State {
     _listeners.add(listener);
 
     if (_cache === null) {
-      console.log('[INSTRUCTOR_UX_W1] load_start');
-
       loadInstructors()
         .then((data) => {
           _cache = data;
-          console.log('[INSTRUCTOR_UX_W1] load_success', { count: data.length });
-          console.log('[INSTRUCTOR_CANONICAL]', data.map((i) => i.slug));
           notifyListeners(data);
         })
         .catch((err) => {
           const msg = err?.message ?? 'Erro ao carregar instrutores';
-          console.warn('[INSTRUCTOR_UX_W1] load_error', { msg });
           setState({ instructors: [], loading: false, error: msg });
         });
     }
@@ -69,15 +64,11 @@ export function useInstructors(): State {
  */
 export async function reloadInstructors(): Promise<void> {
   _cache = null;
-  console.log('[INSTRUCTOR_UX_W1] reload_start');
   try {
     const data = await loadInstructors();
     _cache = data;
-    console.log('[INSTRUCTOR_UX_W1] reload_success', { count: data.length });
     notifyListeners(data);
-  } catch (err: any) {
-    const msg = err?.message ?? 'Erro ao recarregar instrutores';
-    console.warn('[INSTRUCTOR_UX_W1] reload_error', { msg });
+  } catch {
     // Falha não crítica: profile já foi atualizado via refetchProfile
   }
 }

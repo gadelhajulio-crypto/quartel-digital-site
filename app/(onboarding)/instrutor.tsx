@@ -31,14 +31,11 @@ export default function OnboardingInstrutor() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log('[INSTRUCTOR_UX_W1] load_start');
     loadInstructors()
       .then((data) => {
-        console.log('[INSTRUCTOR_UX_W1] load_success', { count: data.length });
         setInstructors(data);
       })
-      .catch((err) => {
-        console.warn('[INSTRUCTOR_UX_W1] load_error', { msg: err?.message });
+      .catch(() => {
         setLoadError('Não foi possível carregar os instrutores. Verifique sua conexão.');
       })
       .finally(() => setLoadingInstructors(false));
@@ -50,40 +47,21 @@ export default function OnboardingInstrutor() {
     setSaveError(null);
 
     const rpcPayload = { p_instructor_profile_id: selected };
-    const selectedInstructor = instructors.find((i) => i.slug === selected) ?? null;
-
-    console.log('[INSTRUCTOR_RPC_CALL]', {
-      selectedInstructor,
-      p_instructor_profile_id: selected,
-      slug: selectedInstructor?.slug ?? null,
-      codigo: selectedInstructor?.codigo ?? null,
-    });
 
     try {
-      const { data, error } = await supabase.rpc('rpc_update_instructor_profile', rpcPayload);
+      const { error } = await supabase.rpc('rpc_update_instructor_profile', rpcPayload);
 
       if (error) {
-        console.warn('[INSTRUCTOR_SELECT_RPC] error', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint,
-        });
         setSaveError(error.message || 'Não foi possível registrar. Tente novamente.');
         setSaving(false);
         return;
       }
 
-      console.log('[INSTRUCTOR_SELECT_RPC] success', { slug: selected, data });
-
       clearInstructorsCache();
       await refetchProfile();
-
-      console.log('[INSTRUCTOR_UX_W1] profile_refetch_done');
       retriggerGate();
     } catch (err: any) {
       const msg = err?.message ?? String(err);
-      console.warn('[INSTRUCTOR_SELECT_RPC] error', { message: msg });
       setSaveError(msg || 'Não foi possível registrar. Tente novamente.');
       setSaving(false);
     }
@@ -149,7 +127,6 @@ export default function OnboardingInstrutor() {
               activeOpacity={0.88}
               onPress={() => {
                 setSelected(instructor.codigo);
-                console.log('[INSTRUCTOR_UX_W1] selected', { codigo: instructor.codigo });
               }}
               style={styles.cardWrapper}
             >

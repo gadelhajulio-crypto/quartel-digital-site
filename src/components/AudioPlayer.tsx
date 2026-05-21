@@ -1,5 +1,8 @@
-// Stub — feature de áudio não implementada.
-// Usada por RevisaoAudioScreen, que não está roteada.
+/**
+ * @deprecated Wave 4c governance cleanup
+ * Stub não-funcional. Feature de áudio não implementada.
+ * Usada por RevisaoAudioScreen, que não está roteada.
+ */
 
 import React from 'react';
 import { View } from 'react-native';

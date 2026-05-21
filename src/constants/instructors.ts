@@ -44,9 +44,12 @@ export const INSTRUCTOR_DATA: Record<InstructorId, InstructorData> = {
   },
 };
 
+/**
+ * @deprecated Wave 4c governance cleanup
+ * INSTRUCTOR_ASSETS e resolveInstructorAssets sem consumers ativos.
+ * FORCE_GLOW e DEFAULT_GLOW permanecem ativos (InstructorButton, ChatScreen).
+ */
 // Assets canônicos por personalidade (força-agnósticos — Ramos/Rocha/Sara).
-// Estrutura mantida por força para compatibilidade com resolveInstructorAssets;
-// marinha é o fallback universal.
 export const INSTRUCTOR_ASSETS: Partial<Record<ForcaId, Record<InstructorId, InstructorAssets>>> = {
   marinha: {
     objetivo: {

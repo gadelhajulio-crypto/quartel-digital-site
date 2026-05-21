@@ -1,5 +1,8 @@
-// Stub — feature de revisão de áudio não implementada.
-// RevisaoAudioScreen usa este hook mas a tela não está roteada.
+/**
+ * @deprecated Wave 4c governance cleanup
+ * Stub não-funcional. Feature de revisão de áudio não implementada.
+ * RevisaoAudioScreen não está roteada.
+ */
 
 type Revision = { audioUrl: string };
 

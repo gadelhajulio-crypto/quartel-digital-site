@@ -377,31 +377,11 @@ export default function SelectInstructorScreen() {
     const rpcPayload = { p_instructor_profile_id: selectedSlug };
     const selectedInstructor = instructors.find((i) => i.slug === selectedSlug) ?? null;
 
-    // ── [INSTRUCTOR_DEBUG] selected_before_save ───────────────────────────
-    console.log('[INSTRUCTOR_DEBUG] selected_before_save', {
-      selectedSlug,
-      selectedCodigo: selectedInstructor?.codigo ?? null,
-      profile_instructor_profile_id: profile?.instructor_profile_id ?? null,
-      instructors_slugs: instructors.map((i) => i.slug),
-      instructors_codigos: instructors.map((i) => i.codigo),
-    });
-
-    // ── [INSTRUCTOR_DEBUG] rpc_payload ────────────────────────────────────
-    console.log('[INSTRUCTOR_DEBUG] rpc_payload', rpcPayload);
-
     try {
       const { data: rpcData, error: rpcError } = await supabase.rpc(
         'rpc_update_instructor_profile',
         rpcPayload,
       );
-
-      // ── [INSTRUCTOR_DEBUG] rpc_response ───────────────────────────────
-      console.log('[INSTRUCTOR_DEBUG] rpc_response', {
-        data: rpcData,
-        error: rpcError
-          ? { message: rpcError.message, code: rpcError.code, hint: rpcError.hint }
-          : null,
-      });
 
       if (rpcError) {
         setErrorMsg(rpcError.message || 'Erro ao salvar instrutor.');
@@ -421,14 +401,6 @@ export default function SelectInstructorScreen() {
           i.slug === dbRow?.instructor_profile_id,
       ) ?? null;
 
-      // ── [INSTRUCTOR_DEBUG] resolved_slug ──────────────────────────────
-      console.log('[INSTRUCTOR_DEBUG] resolved_slug', {
-        db_raw: dbRow?.instructor_profile_id ?? null,
-        db_error: dbErr?.message ?? null,
-        resolved_slug: resolvedFromDb?.slug ?? null,
-        resolved_codigo: resolvedFromDb?.codigo ?? null,
-      });
-
       // ── Atualiza estado global ────────────────────────────────────────
       await reloadInstructors();
       await refetchProfile();
@@ -445,41 +417,9 @@ export default function SelectInstructorScreen() {
           i.slug === vidRow?.instructor_profile_id,
       ) ?? null;
 
-      // ── [INSTRUCTOR_DEBUG] profile_after_refetch ─────────────────────
-      console.log('[INSTRUCTOR_DEBUG] profile_after_refetch', {
-        instructor_profile_id: vidRow?.instructor_profile_id ?? null,
-        vid_error: vidErr?.message ?? null,
-      });
-
-      // ── [INSTRUCTOR_DEBUG] hydration_source ──────────────────────────
-      console.log('[INSTRUCTOR_DEBUG] hydration_source', {
-        view: 'v_identidade_recruta',
-        join: 'LEFT JOIN profiles ON profiles.id = recrutas.id',
-        field: 'profiles.instructor_profile_id',
-        note: 'Se LEFT JOIN retornar null, instructor_profile_id será null',
-      });
-
-      // ── [INSTRUCTOR_DEBUG] dashboard_instructor ───────────────────────
-      // InstructorButton: instructors.find(i => i.codigo === profile.instructor_profile_id)
-      console.log('[INSTRUCTOR_DEBUG] dashboard_instructor', {
-        lookup_key: vidRow?.instructor_profile_id ?? null,
-        resolved_slug: resolvedAfterRefetch?.slug ?? null,
-        resolved_nome: resolvedAfterRefetch?.nome ?? null,
-        will_show_avatar: resolvedAfterRefetch !== null,
-      });
-
-      // ── [INSTRUCTOR_DEBUG] chat_instructor ────────────────────────────
-      // ChatScreen: const instructorSlug = profile?.instructor_profile_id ?? 'objetivo'
-      // (usa o codigo, não o slug — fallback 'objetivo' = Ramos)
-      console.log('[INSTRUCTOR_DEBUG] chat_instructor', {
-        instructorSlug_value: vidRow?.instructor_profile_id ?? 'objetivo',
-        note: 'ChatScreen usa instructor_profile_id como codigo (não slug)',
-      });
-
       router.replace('/(tabs)/chat');
     } catch (err: any) {
       const msg = err?.message ?? String(err);
-      console.warn('[INSTRUCTOR_DEBUG] exception', { message: msg });
       setErrorMsg(msg || 'Erro inesperado.');
       setUxState('error');
     }
