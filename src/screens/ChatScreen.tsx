@@ -427,8 +427,12 @@ export default function ChatScreen() {
         }
 
         // Recarregar mensagens do DB (inclui o par user+assistant persistido)
+        // tryMarkRead após fetchMensagens: zera unread_count no banco após leitura.
+        // Garante que o badge do BottomBar reflita "lido" sem realtime.
         if (cid) {
           await fetchMensagens(cid);
+          console.log('[CHAT_UNREAD_W2] unread_refresh', { instrutor_slug: instructorSlug });
+          await tryMarkRead(cid);
         } else {
           // Persistência parcial: mostrar resposta mas marcar como não persistida
           setLocalMessages((prev) =>

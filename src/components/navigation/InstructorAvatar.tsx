@@ -5,6 +5,7 @@ import {
   ImageSourcePropType,
   Platform,
   StyleSheet,
+  Text,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -18,9 +19,10 @@ type Props = {
   glowColor: string;
   onPress: () => void;
   active?: boolean;
+  unreadCount?: number; // Wave 2b: vem de useChatUnread (banco), nunca calculado local
 };
 
-export function InstructorAvatar({ avatarSource, glowColor, onPress, active = false }: Props) {
+export function InstructorAvatar({ avatarSource, glowColor, onPress, active = false, unreadCount = 0 }: Props) {
   // Idle ring pulse
   const pulseAnim = useRef(new Animated.Value(0)).current;
   // Press scale
@@ -129,6 +131,20 @@ export function InstructorAvatar({ avatarSource, glowColor, onPress, active = fa
           { backgroundColor: glowColor, borderColor: tatico.colors.card },
         ]}
       />
+
+      {/* Badge de unread institucional (Wave 2b) — visível apenas quando > 0 */}
+      {unreadCount > 0 && (
+        <View
+          style={[
+            styles.unreadBadge,
+            { backgroundColor: tatico.colors.accent, borderColor: tatico.colors.card },
+          ]}
+        >
+          <Text style={styles.unreadText}>
+            {unreadCount > 9 ? '9+' : String(unreadCount)}
+          </Text>
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -168,5 +184,25 @@ const styles = StyleSheet.create({
     borderRadius: 1,          // leve arredondamento — não um círculo perfeito
     transform: [{ rotate: '45deg' }], // diamante
     borderWidth: 1.5,
+  },
+  // Badge unread Wave 2b: top-right do avatar, discreto, institucional
+  unreadBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    zIndex: 50,
+  },
+  unreadText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '700',
+    lineHeight: 12,
   },
 });
