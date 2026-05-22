@@ -263,6 +263,16 @@ export default function ConversationsScreen() {
     router.push('/(tabs)/chat' as any);
   }
 
+  function openConversation(conversa: ChatConversa) {
+    router.push({
+      pathname: '/(tabs)/chat' as any,
+      params: {
+        conversa_id: conversa.conversa_id,
+        instrutor_slug: conversa.instrutor_slug,
+      },
+    });
+  }
+
   function resolveAvatar(instrutor_slug: string) {
     const instructor = instructorByCode[instrutor_slug];
     const localKey = instructor?.slug ?? null;
@@ -329,7 +339,7 @@ export default function ConversationsScreen() {
               conversa={item}
               avatarSource={resolveAvatar(item.instrutor_slug)}
               glowColor={glowColor}
-              onPress={openChat}
+              onPress={() => openConversation(item)}
             />
           )}
           contentContainerStyle={styles.listContent}

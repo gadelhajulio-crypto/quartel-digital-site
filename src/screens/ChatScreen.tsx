@@ -14,7 +14,7 @@ import {
   Animated,
 } from 'react-native';
 import * as Crypto from 'expo-crypto';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 import { useNetworkGuard } from '../hooks/useNetworkGuard';
 import {
@@ -290,6 +290,10 @@ function ChatGateIncompleteProfile({
 
 // ── Tela principal ────────────────────────────────────────────────────────────
 
+// Slugs canônicos aceitos via params de navegação. Nunca aceitar nomes visuais
+// ('rocha', 'sara', 'ramos') — o backend usa apenas os códigos institucionais.
+const VALID_SLUGS = new Set(['objetivo', 'estrategico', 'didatico']);
+
 export default function ChatScreen() {
   const router = useRouter();
   const { profile } = useAuth();
@@ -298,8 +302,15 @@ export default function ChatScreen() {
   const onboardingOk = !!(profile?.forca && profile?.onboarding_concluido);
   const instructorOk = !!profile?.instructor_profile_id;
 
-  // instructorSlug = codigo do perfil (objetivo/estrategico/didatico), usado nas RPCs de chat
-  const instructorSlug = profile?.instructor_profile_id ?? 'objetivo';
+  const params = useLocalSearchParams<{ conversa_id?: string; instrutor_slug?: string }>();
+
+  // instructorSlug: parâmetro de navegação tem prioridade sobre o perfil.
+  // Permite abrir conversa de instrutor diferente do selecionado no perfil.
+  // Aceita apenas slugs canônicos (objetivo/estrategico/didatico).
+  const paramSlug = typeof params.instrutor_slug === 'string' ? params.instrutor_slug : undefined;
+  const instructorSlug = (paramSlug && VALID_SLUGS.has(paramSlug))
+    ? paramSlug
+    : (profile?.instructor_profile_id ?? 'objetivo');
   const forca = profile?.forca ?? 'marinha';
   const glowColor = FORCE_GLOW[forca] ?? DEFAULT_GLOW;
 
@@ -364,9 +375,31 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!onboardingOk || !instructorOk) return;
 
+    const directConversaId = typeof params.conversa_id === 'string' ? params.conversa_id : undefined;
+
     async function initConversation() {
+      // Resetar estado ao trocar de conversa/instrutor via params (evita flicker com dados antigos)
+      setMensagens([]);
+      setLocalMessages([]);
+      setConversaId(null);
+      setHasMore(false);
+      setOldestCursor(null);
       setConversaLoading(true);
       try {
+        // Caminho direto: conversa_id informado pela lista de conversas — sem RPC extra
+        if (directConversaId) {
+          setConversaId(directConversaId);
+          await fetchMensagens(directConversaId);
+          await tryMarkRead(directConversaId);
+          logChatEvent('chat_opened', {
+            instrutor_codigo: instructorSlug,
+            conversa_id_prefix: conversaPrefix(directConversaId),
+            status: 'from_list',
+          });
+          return;
+        }
+
+        // Caminho padrão: resolver ou criar conversa via RPC
         const result = await openConversationRpc(instructorSlug);
         if (result?.conversa_id) {
           setConversaId(result.conversa_id);
@@ -391,7 +424,7 @@ export default function ChatScreen() {
     }
 
     initConversation();
-  }, [onboardingOk, instructorOk, instructorSlug]);
+  }, [onboardingOk, instructorOk, instructorSlug, params.conversa_id]);
 
   async function fetchMensagens(cid: string) {
     setMessagesLoading(true);
