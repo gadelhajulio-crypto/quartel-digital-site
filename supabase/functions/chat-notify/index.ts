@@ -25,12 +25,28 @@ Deno.serve(async (req) => {
     return json(405, { ok: false, reason: "method_not_allowed" });
   }
 
-  // ── 1. Autenticação interna: apenas service_role ────────────────────────────
+  // ── 1. Autenticação interna: apenas instrutor-send via service_role ──────────
+  // Mecanismo duplo:
+  //   (a) x-qd-notify-key  — header customizado, não tocado pelo gateway Supabase
+  //   (b) Authorization    — fallback legado; pode ser reescrito pelo gateway
+  // A comparação usa (a) como primário; (b) como fallback para compatibilidade.
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  const authHeader = req.headers.get("Authorization") ?? "";
+  const internalKey = req.headers.get("x-qd-notify-key") ?? "";
+  const authHeader  = req.headers.get("Authorization") ?? "";
 
-  if (authHeader !== `Bearer ${serviceKey}`) {
-    console.warn("[CHAT_NOTIFY] unauthorized");
+  const authorizedViaCustomHeader = internalKey !== "" && internalKey === serviceKey;
+  const authorizedViaBearer       = authHeader === `Bearer ${serviceKey}`;
+
+  if (!authorizedViaCustomHeader && !authorizedViaBearer) {
+    // Log diagnóstico: nunca expõe a chave completa — apenas prefixos de 6 chars
+    console.warn("[CHAT_NOTIFY] unauthorized", {
+      has_auth_header: authHeader !== "",
+      has_custom_header: internalKey !== "",
+      bearer_prefix: authHeader.startsWith("Bearer ") ? authHeader.slice(7, 13) : "(no_bearer)",
+      custom_prefix: internalKey.slice(0, 6) || "(empty)",
+      expected_prefix: serviceKey.slice(0, 6) || "(empty_key)",
+      key_missing: serviceKey === "",
+    });
     return json(401, { ok: false, reason: "unauthorized" });
   }
 

@@ -398,6 +398,8 @@ Deno.serve(async (req) => {
         request_id,
         conversa_id_prefix: conversa_id.slice(0, 8),
         recruta_id_prefix: recruta_id.slice(0, 8),
+        notify_key_prefix: notifyServiceKey.slice(0, 6) || "(empty)",
+        notify_key_missing: notifyServiceKey === "",
         ms: Date.now() - started,
       });
 
@@ -410,7 +412,13 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            // Authorization: para o gateway Supabase autenticar a request
             Authorization: `Bearer ${notifyServiceKey}`,
+            // x-qd-notify-key: autenticação interna function-to-function.
+            // Necessário porque o gateway Supabase pode reprocessar o header
+            // Authorization antes de entregar ao handler de chat-notify,
+            // tornando a comparação direta do Bearer token não-confiável.
+            "x-qd-notify-key": notifyServiceKey,
           },
           body: JSON.stringify({ recruta_id, conversa_id }),
         });
