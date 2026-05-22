@@ -1,0 +1,24 @@
+# =========================================================
+# Supabase Edge Functions Configuration
+# =========================================================
+
+[functions.instrutor-send]
+enabled = true
+verify_jwt = true
+import_map = "./functions/instrutor-send/deno.json"
+entrypoint = "./functions/instrutor-send/index.ts"
+
+[functions.chat-central]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/chat-central/index.ts"
+
+[functions.chat-notify]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/chat-notify/index.ts"
+
+[functions.stripe-create-checkout-session]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/stripe-create-checkout-session/index.ts"

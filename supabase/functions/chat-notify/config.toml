@@ -1,9 +1,0 @@
-# chat-notify — configuração da Edge Function
-#
-# verify_jwt = false:
-#   Esta function é chamada apenas por instrutor-send (function-to-function).
-#   Autenticação própria via x-qd-notify-key (SUPABASE_SERVICE_ROLE_KEY).
-#   JWT verification no gateway é desnecessária e impede que requests
-#   function-to-function alcancem o handler quando o isolate não tem
-#   contexto de usuário direto.
-verify_jwt = false
