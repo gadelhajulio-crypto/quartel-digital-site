@@ -379,19 +379,51 @@ Deno.serve(async (req) => {
 
     // ── 9. Notificação push — fire-and-forget, nunca bloqueia resposta ────────
     const conversa_id = (rpcData as any)?.conversa_id as string | undefined;
-    if (conversa_id) {
+
+    if (!conversa_id) {
+      console.warn("[INSTRUTOR_SEND_W1] chat_notify_skipped", {
+        request_id,
+        reason: "no_conversa_id",
+        has_rpc_data: !!rpcData,
+        rpc_data_keys: rpcData != null && typeof rpcData === "object"
+          ? Object.keys(rpcData as object)
+          : null,
+        ms: Date.now() - started,
+      });
+    } else {
       const chatNotifyUrl = `${supabaseUrl}/functions/v1/chat-notify`;
-      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      const notifyServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+      console.log("[INSTRUTOR_SEND_W1] chat_notify_called", {
+        request_id,
+        conversa_id_prefix: conversa_id.slice(0, 8),
+        recruta_id_prefix: recruta_id.slice(0, 8),
+        ms: Date.now() - started,
+      });
+
       fetch(chatNotifyUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${serviceKey}`,
+          Authorization: `Bearer ${notifyServiceKey}`,
         },
         body: JSON.stringify({ recruta_id, conversa_id }),
-      }).catch(() => {
-        // Silencioso: push nunca bloqueia entrega da mensagem
-      });
+      })
+        .then((res) => {
+          console.log("[INSTRUTOR_SEND_W1] chat_notify_status", {
+            request_id,
+            http_status: res.status,
+            ok: res.ok,
+            ms: Date.now() - started,
+          });
+        })
+        .catch((err) => {
+          console.error("[INSTRUTOR_SEND_W1] chat_notify_error", {
+            request_id,
+            error_code: String(err).slice(0, 60),
+            ms: Date.now() - started,
+          });
+        });
     }
 
     return json(200, {
