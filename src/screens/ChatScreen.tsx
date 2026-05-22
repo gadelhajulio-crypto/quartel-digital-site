@@ -594,6 +594,37 @@ export default function ChatScreen() {
 
         pendingRetry.current = null;
       } catch (err) {
+        // Quando o app vai para background, o OS pode abortar o fetch antes da
+        // resposta chegar — mas o servidor pode ter processado com sucesso.
+        // Se não for um erro semântico do servidor (ChatError), verificar no DB.
+        const isNetworkAbort = !(err instanceof ChatError);
+        const currentCid = conversaId;
+
+        if (isNetworkAbort && currentCid) {
+          try {
+            const refreshed = await loadMensagens(currentCid, { limit: PAGE_SIZE });
+            const found = refreshed.some((m) => m.client_message_id === clientMsgId);
+            if (found) {
+              // Servidor processou com sucesso — só a recepção foi abortada
+              setMensagens(refreshed);
+              setHasMore(refreshed.length >= PAGE_SIZE);
+              setOldestCursor(refreshed.length > 0 ? refreshed[0].created_at : null);
+              setLocalMessages((prev) =>
+                prev.filter((lm) => lm.client_message_id !== clientMsgId),
+              );
+              setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 80);
+              logChatEvent('message_send_succeeded_after_abort', {
+                instrutor_codigo: instructorSlug,
+                conversa_id_prefix: conversaPrefix(currentCid),
+              });
+              pendingRetry.current = null;
+              return;
+            }
+          } catch {
+            // Refresh falhou — seguir fluxo de erro normal
+          }
+        }
+
         const errorMsg =
           err instanceof ChatError
             ? err.message
