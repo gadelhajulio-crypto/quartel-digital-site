@@ -33,7 +33,11 @@ export type ChatC5Event =
   | 'push_permission_denied'
   | 'push_token_registered'
   | 'push_token_register_failed'
-  | 'push_skipped_not_device';
+  | 'push_skipped_not_device'
+  | 'push_dispatch_started'
+  | 'push_dispatch_succeeded'
+  | 'push_dispatch_failed'
+  | 'push_token_invalidated';
 
 // Campos permitidos — TypeScript impede campos proibidos em tempo de compilação
 export type ChatC5Meta = {

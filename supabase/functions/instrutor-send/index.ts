@@ -377,6 +377,23 @@ Deno.serve(async (req) => {
       ms: Date.now() - started,
     });
 
+    // ── 9. Notificação push — fire-and-forget, nunca bloqueia resposta ────────
+    const conversa_id = (rpcData as any)?.conversa_id as string | undefined;
+    if (conversa_id) {
+      const chatNotifyUrl = `${supabaseUrl}/functions/v1/chat-notify`;
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      fetch(chatNotifyUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ recruta_id, conversa_id }),
+      }).catch(() => {
+        // Silencioso: push nunca bloqueia entrega da mensagem
+      });
+    }
+
     return json(200, {
       ok: true,
       ...(rpcData != null && typeof rpcData === "object" ? (rpcData as object) : {}),
