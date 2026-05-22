@@ -12,6 +12,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Animated,
+  AppState,
 } from 'react-native';
 import * as Crypto from 'expo-crypto';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -31,6 +32,7 @@ import { FORCE_GLOW, DEFAULT_GLOW } from '../constants/instructors';
 import { useInstructors } from '../hooks/useInstructors';
 import { useChatDraft } from '../hooks/useChatDraft';
 import { logChatEvent, conversaPrefix } from '../utils/chatTelemetry';
+import { emitChatUnreadRefresh } from '../events/chatUnreadBus';
 import { InstitutionalHeader } from '../design/components/InstitutionalHeader';
 import { InstitutionalInput } from '../design/components/InstitutionalInput';
 import { InstitutionalBadge } from '../design/components/InstitutionalBadge';
@@ -352,6 +354,8 @@ export default function ChatScreen() {
 
   // Retry: mantém o client_message_id da última tentativa falha
   const pendingRetry = useRef<{ text: string; client_message_id: string } | null>(null);
+  // Para re-verificar no DB ao voltar ao foreground quando há mensagem com erro de timing
+  const pendingAbortCheck = useRef<{ clientMsgId: string; cid: string } | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -369,6 +373,39 @@ export default function ChatScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restored]);
+
+  // Re-verificar mensagens com erro de timing ao retornar ao foreground.
+  // Quando o usuário fecha o app durante o envio, o fetch é abortado antes
+  // da resposta (~12s). Se o servidor terminou enquanto o app estava fechado,
+  // a mensagem está no banco — basta fazer refresh para limpar o erro.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async (nextState) => {
+      if (nextState !== 'active') return;
+      const pending = pendingAbortCheck.current;
+      if (!pending) return;
+      try {
+        const refreshed = await loadMensagens(pending.cid, { limit: PAGE_SIZE });
+        const found = refreshed.some((m) => m.client_message_id === pending.clientMsgId);
+        if (found) {
+          setMensagens(refreshed);
+          setHasMore(refreshed.length >= PAGE_SIZE);
+          setOldestCursor(refreshed.length > 0 ? refreshed[0].created_at : null);
+          setLocalMessages((prev) =>
+            prev.filter((lm) => lm.client_message_id !== pending.clientMsgId),
+          );
+          setSendError(null);
+          pendingAbortCheck.current = null;
+          pendingRetry.current = null;
+          setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 200);
+          await tryMarkRead(pending.cid);
+        }
+      } catch {
+        // Falha silenciosa — usuário pode usar retry manual
+      }
+    });
+    return () => sub.remove();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Inicialização: abrir conversa existente ──────────────────────────────────
 
@@ -433,12 +470,14 @@ export default function ChatScreen() {
       setMensagens(msgs);
       setHasMore(msgs.length >= PAGE_SIZE);
       setOldestCursor(msgs.length > 0 ? msgs[0].created_at : null);
-      // Remover mensagens locais cujos client_message_id já estão no DB
+      // Remover mensagens locais cujos client_message_id já estão no DB.
+      // Não preservar 'failed': se está no banco, o DB é a verdade — a bolha
+      // vermelha local deve sumir e a mensagem do banco deve aparecer no lugar.
       const dbIds = new Set(msgs.map((m) => m.client_message_id).filter(Boolean));
       setLocalMessages((prev) =>
-        prev.filter((lm) => !dbIds.has(lm.client_message_id) || lm.status === 'failed'),
+        prev.filter((lm) => !dbIds.has(lm.client_message_id)),
       );
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 80);
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 200);
       logChatEvent('messages_loaded', {
         count: msgs.length,
         has_more: msgs.length >= PAGE_SIZE,
@@ -486,6 +525,7 @@ export default function ChatScreen() {
       const unread = statuses.find((s) => s.conversa_id === cid && s.has_unread);
       if (unread) {
         await markReadRpc(cid);
+        emitChatUnreadRefresh(); // atualiza badge do InstructorButton imediatamente
       }
     } catch {
       // Falha silenciosa — unread é informativo
@@ -625,6 +665,12 @@ export default function ChatScreen() {
           }
         }
 
+        // Registrar para re-verificação quando app voltar ao foreground.
+        // Cobre o caso onde o servidor ainda está processando no momento do catch.
+        if (currentCid) {
+          pendingAbortCheck.current = { clientMsgId, cid: currentCid };
+        }
+
         const errorMsg =
           err instanceof ChatError
             ? err.message
@@ -705,7 +751,7 @@ export default function ChatScreen() {
   const dbItems: ListItem[] = mensagens.map((m) => ({ kind: 'db', msg: m }));
   const localIds = new Set(mensagens.map((m) => m.client_message_id).filter(Boolean));
   const pendingItems: ListItem[] = localMessages
-    .filter((lm) => !localIds.has(lm.client_message_id) || lm.status === 'failed')
+    .filter((lm) => !localIds.has(lm.client_message_id))
     .map((lm) => ({ kind: 'local', lm }));
   const allItems: ListItem[] = [...dbItems, ...pendingItems];
 
