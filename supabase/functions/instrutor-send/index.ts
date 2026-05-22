@@ -414,24 +414,30 @@ Deno.serve(async (req) => {
             "Content-Type": "application/json",
             // Authorization: para o gateway Supabase autenticar a request
             Authorization: `Bearer ${notifyServiceKey}`,
-            // x-qd-notify-key: autenticação interna function-to-function.
-            // Necessário porque o gateway Supabase pode reprocessar o header
-            // Authorization antes de entregar ao handler de chat-notify,
-            // tornando a comparação direta do Bearer token não-confiável.
+            // x-qd-notify-key: autenticação interna function-to-function
             "x-qd-notify-key": notifyServiceKey,
           },
           body: JSON.stringify({ recruta_id, conversa_id }),
         });
+
+        // Ler body antes de logar (stream só pode ser lido uma vez)
+        let notifyBodyRaw = "";
+        try { notifyBodyRaw = await notifyRes.text(); } catch { /* ignorado */ }
+
         console.log("[INSTRUTOR_SEND_W1] chat_notify_status", {
           request_id,
+          url: chatNotifyUrl,
           http_status: notifyRes.status,
           ok: notifyRes.ok,
+          content_type: notifyRes.headers.get("content-type") ?? null,
+          body_prefix: notifyBodyRaw.slice(0, 100),
           ms: Date.now() - started,
         });
       } catch (err) {
         console.error("[INSTRUTOR_SEND_W1] chat_notify_error", {
           request_id,
-          error_code: String(err).slice(0, 60),
+          url: chatNotifyUrl,
+          error_code: String(err).slice(0, 80),
           ms: Date.now() - started,
         });
         // Push falhou mas não bloqueia resposta ao app
