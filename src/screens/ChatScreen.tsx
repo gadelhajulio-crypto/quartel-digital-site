@@ -594,13 +594,13 @@ export default function ChatScreen() {
 
         pendingRetry.current = null;
       } catch (err) {
-        // Quando o app vai para background, o OS pode abortar o fetch antes da
-        // resposta chegar — mas o servidor pode ter processado com sucesso.
-        // Se não for um erro semântico do servidor (ChatError), verificar no DB.
-        const isNetworkAbort = !(err instanceof ChatError);
+        // Quando o app vai para background, o OS aborta o fetch antes da resposta
+        // chegar — mas o servidor pode ter processado com sucesso. sendMessageW1
+        // envolve erros de rede em ChatError, então verificar no DB sempre que
+        // conversaId for conhecido: se a mensagem está lá, o erro foi de recepção.
         const currentCid = conversaId;
 
-        if (isNetworkAbort && currentCid) {
+        if (currentCid) {
           try {
             const refreshed = await loadMensagens(currentCid, { limit: PAGE_SIZE });
             const found = refreshed.some((m) => m.client_message_id === clientMsgId);
