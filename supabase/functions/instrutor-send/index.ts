@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
       ms: Date.now() - started,
     });
 
-    // ── 9. Notificação push — fire-and-forget, nunca bloqueia resposta ────────
+    // ── 9. Notificação push — awaited (Deno descarta Promises após return) ──────
     const conversa_id = (rpcData as any)?.conversa_id as string | undefined;
 
     if (!conversa_id) {
@@ -401,29 +401,33 @@ Deno.serve(async (req) => {
         ms: Date.now() - started,
       });
 
-      fetch(chatNotifyUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${notifyServiceKey}`,
-        },
-        body: JSON.stringify({ recruta_id, conversa_id }),
-      })
-        .then((res) => {
-          console.log("[INSTRUTOR_SEND_W1] chat_notify_status", {
-            request_id,
-            http_status: res.status,
-            ok: res.ok,
-            ms: Date.now() - started,
-          });
-        })
-        .catch((err) => {
-          console.error("[INSTRUTOR_SEND_W1] chat_notify_error", {
-            request_id,
-            error_code: String(err).slice(0, 60),
-            ms: Date.now() - started,
-          });
+      // AWAIT obrigatório: fire-and-forget não é confiável em Supabase Edge Functions.
+      // O isolate Deno pode ser encerrado logo após return json(), silenciando o fetch
+      // antes de qualquer byte ser enviado à chat-notify. Awaitar garante entrega.
+      // Latência adicionada ≈ RTT da chat-notify (~200-400ms) — aceitável.
+      try {
+        const notifyRes = await fetch(chatNotifyUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${notifyServiceKey}`,
+          },
+          body: JSON.stringify({ recruta_id, conversa_id }),
         });
+        console.log("[INSTRUTOR_SEND_W1] chat_notify_status", {
+          request_id,
+          http_status: notifyRes.status,
+          ok: notifyRes.ok,
+          ms: Date.now() - started,
+        });
+      } catch (err) {
+        console.error("[INSTRUTOR_SEND_W1] chat_notify_error", {
+          request_id,
+          error_code: String(err).slice(0, 60),
+          ms: Date.now() - started,
+        });
+        // Push falhou mas não bloqueia resposta ao app
+      }
     }
 
     return json(200, {
