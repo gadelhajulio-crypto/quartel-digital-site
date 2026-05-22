@@ -11,6 +11,16 @@ import { startAppLockGuardian, updateLastActive } from '../src/auth/appLockGuard
 import { startAuthForegroundCoordinator } from '../src/auth/authForegroundCoordinator';
 import { BootstrapGate } from '../src/components/navigation/BootstrapGate';
 
+// Exibir notificações mesmo com app em foreground.
+// Deve ser chamado antes do primeiro render — nível de módulo é o lugar certo.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 export default function RootLayout() {
   const router = useRouter();
 
@@ -25,7 +35,10 @@ export default function RootLayout() {
           | { type?: string; conversa_id?: string }
           | undefined;
         if (data?.type === 'chat_reply') {
-          router.push('/(tabs)/chat' as any);
+          router.push({
+            pathname: '/(tabs)/chat' as any,
+            params: data.conversa_id ? { conversa_id: data.conversa_id } : {},
+          });
         }
       },
     );
