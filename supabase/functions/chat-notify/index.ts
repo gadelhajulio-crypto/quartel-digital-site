@@ -74,6 +74,11 @@ Deno.serve(async (req) => {
     return json(500, { ok: false, reason: "db_error" });
   }
 
+  console.log("[CHAT_C5] push_tokens_found", {
+    count: tokens?.length ?? 0,
+    recruta_id_prefix: recruta_id.slice(0, 8),
+  });
+
   if (!tokens || tokens.length === 0) {
     console.log("[CHAT_C5] push_dispatch_succeeded", { sent: 0, reason: "no_tokens" });
     return json(200, { ok: true, sent: 0 });
