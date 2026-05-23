@@ -356,6 +356,8 @@ export default function ChatScreen() {
   const pendingRetry = useRef<{ text: string; client_message_id: string } | null>(null);
   // Para re-verificar no DB ao voltar ao foreground quando há mensagem com erro de timing
   const pendingAbortCheck = useRef<{ clientMsgId: string; cid: string } | null>(null);
+  // Flag para onContentSizeChange scrollar ao fim após fetchMensagens (não durante loadOlder)
+  const scrollToEndPendingRef = useRef(false);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -396,7 +398,7 @@ export default function ChatScreen() {
           setSendError(null);
           pendingAbortCheck.current = null;
           pendingRetry.current = null;
-          setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 200);
+          scrollToEndPendingRef.current = true;
           await tryMarkRead(pending.cid);
         }
       } catch {
@@ -477,7 +479,9 @@ export default function ChatScreen() {
       setLocalMessages((prev) =>
         prev.filter((lm) => !dbIds.has(lm.client_message_id)),
       );
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 200);
+      // Sinalizar para onContentSizeChange rolar ao fim após o layout do FlatList.
+      // Mais confiável que setTimeout fixo, que pode disparar antes do layout terminar.
+      scrollToEndPendingRef.current = true;
       logChatEvent('messages_loaded', {
         count: msgs.length,
         has_more: msgs.length >= PAGE_SIZE,
@@ -652,7 +656,7 @@ export default function ChatScreen() {
               setLocalMessages((prev) =>
                 prev.filter((lm) => lm.client_message_id !== clientMsgId),
               );
-              setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 80);
+              scrollToEndPendingRef.current = true;
               logChatEvent('message_send_succeeded_after_abort', {
                 instrutor_codigo: instructorSlug,
                 conversa_id_prefix: conversaPrefix(currentCid),
@@ -880,6 +884,12 @@ export default function ChatScreen() {
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
+            onContentSizeChange={() => {
+              if (scrollToEndPendingRef.current) {
+                scrollToEndPendingRef.current = false;
+                flatListRef.current?.scrollToEnd({ animated: false });
+              }
+            }}
             onScroll={handleListScroll}
             scrollEventThrottle={200}
             ListHeaderComponent={

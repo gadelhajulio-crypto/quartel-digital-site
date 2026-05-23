@@ -12,28 +12,28 @@ import { subscribeChatUnreadRefresh } from '../events/chatUnreadBus';
 
 export function useChatUnread(instructorSlug: string | null) {
   const [unreadCount, setUnreadCount] = useState<number>(0);
-  // Guard contra requisições paralelas (mount + foreground simultâneos)
-  const isRefreshingRef = useRef(false);
+  // Versão monotônica: cada refresh recebe um ticket; apenas o último vence.
+  // Evita que refresh anterior (com count antigo) sobrescreva um mais recente.
+  // Não bloqueia chamadas paralelas — ao contrário do isRefreshingRef anterior,
+  // que causava race com o foreground event ao tocar uma push notification.
+  const refreshTicketRef = useRef(0);
 
   const refresh = useCallback(async () => {
-    if (isRefreshingRef.current) return;
-    isRefreshingRef.current = true;
+    const ticket = ++refreshTicketRef.current;
 
     if (!instructorSlug) {
       setUnreadCount(0);
-      isRefreshingRef.current = false;
       return;
     }
     try {
       const conversas = await loadConversas();
+      if (ticket !== refreshTicketRef.current) return; // resultado stale — ignorar
       const conversa = conversas.find((c) => c.instrutor_slug === instructorSlug);
       const count = conversa?.unread_count ?? 0;
       logChatEvent('unread_loaded', { instrutor_codigo: instructorSlug, count });
       setUnreadCount(count);
     } catch {
       // Falha silenciosa — badge é informativo, nao bloqueia UX
-    } finally {
-      isRefreshingRef.current = false;
     }
   }, [instructorSlug]);
 
