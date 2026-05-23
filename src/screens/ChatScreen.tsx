@@ -358,6 +358,8 @@ export default function ChatScreen() {
   const pendingAbortCheck = useRef<{ clientMsgId: string; cid: string } | null>(null);
   // Flag para onContentSizeChange scrollar ao fim após fetchMensagens (não durante loadOlder)
   const scrollToEndPendingRef = useRef(false);
+  // Debounce: VirtualizedList renderiza em batches; só scrollar após conteúdo estabilizar
+  const scrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -885,10 +887,17 @@ export default function ChatScreen() {
             showsVerticalScrollIndicator={false}
             maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
             onContentSizeChange={() => {
-              if (scrollToEndPendingRef.current) {
-                scrollToEndPendingRef.current = false;
-                flatListRef.current?.scrollToEnd({ animated: false });
-              }
+              if (!scrollToEndPendingRef.current) return;
+              // Debounce: cada batch de itens do VirtualizedList dispara onContentSizeChange.
+              // Esperar 120ms sem novos disparos antes de scrollar — garante que todos
+              // os itens estão renderizados e o conteúdo estabilizou.
+              if (scrollDebounceRef.current) clearTimeout(scrollDebounceRef.current);
+              scrollDebounceRef.current = setTimeout(() => {
+                if (scrollToEndPendingRef.current) {
+                  scrollToEndPendingRef.current = false;
+                  flatListRef.current?.scrollToEnd({ animated: false });
+                }
+              }, 120);
             }}
             onScroll={handleListScroll}
             scrollEventThrottle={200}
