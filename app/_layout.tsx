@@ -16,6 +16,8 @@ import { BootstrapGate } from '../src/components/navigation/BootstrapGate';
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
