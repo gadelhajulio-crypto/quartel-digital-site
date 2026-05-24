@@ -14,20 +14,99 @@
 --           habilitada em Wave 5b-1 via instrutor-send.
 --
 -- INVARIANTES:
---   - Nenhuma coluna existente é removida ou alterada (safe additive)
+--   - Nenhuma coluna existente é removida ou alterada destrutivamente
 --   - Nenhum dado histórico é perdido
 --   - force/access_mode passam a ser nullable para evitar 'unknown' forçado
 --   - instrutor_slug adicionado (nullable) para suportar Wave 5b-1
 --   - Trigger ativo após esta migration usa recrutas como fonte canônica
 --
+-- IDEMPOTÊNCIA (patch para banco divergente):
+--   - force/access_mode: ADD COLUMN se ausentes; DROP NOT NULL se presentes
+--     como NOT NULL — handle qualquer estado remoto via DO $$ block
+--   - instrutor_slug/latency_ms: verificação de existência no DO $$ block
+--   - Índices: CREATE INDEX IF NOT EXISTS
+--   - Trigger e função: DROP IF EXISTS / CREATE OR REPLACE
+--
 -- IMPACTO EM PRODUÇÃO: nenhum — fluxo atual não insere em v_audit_eventos.
 --   A correção prepara o pipeline sem alterar qualquer comportamento ativo.
 
--- ── 1. Adicionar colunas novas à chat_audit_log (nullable, additive) ──────────
+-- ── 1. Preparar colunas de chat_audit_log (idempotente) ───────────────────────
+--
+-- Estratégia por coluna:
+--   force       — se NÃO existir: ADD COLUMN TEXT (nullable)
+--               — se existir e NOT NULL: DROP NOT NULL
+--               — se existir e nullable: no-op
+--   access_mode — mesma lógica
+--   instrutor_slug — adicionar se não existir
+--   latency_ms     — adicionar se não existir
 
-ALTER TABLE public.chat_audit_log
-  ALTER COLUMN force       DROP NOT NULL,
-  ALTER COLUMN access_mode DROP NOT NULL;
+DO $$
+BEGIN
+
+  -- ── force ──────────────────────────────────────────────────────────────────
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name   = 'chat_audit_log'
+       AND column_name  = 'force'
+  ) THEN
+    -- Coluna ausente no banco remoto: adicionar como nullable
+    ALTER TABLE public.chat_audit_log ADD COLUMN force TEXT;
+
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name   = 'chat_audit_log'
+       AND column_name  = 'force'
+       AND is_nullable  = 'NO'
+  ) THEN
+    -- Coluna existe mas é NOT NULL: relaxar
+    ALTER TABLE public.chat_audit_log ALTER COLUMN force DROP NOT NULL;
+  END IF;
+  -- else: coluna existe e já é nullable — no-op
+
+  -- ── access_mode ────────────────────────────────────────────────────────────
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name   = 'chat_audit_log'
+       AND column_name  = 'access_mode'
+  ) THEN
+    ALTER TABLE public.chat_audit_log ADD COLUMN access_mode TEXT;
+
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name   = 'chat_audit_log'
+       AND column_name  = 'access_mode'
+       AND is_nullable  = 'NO'
+  ) THEN
+    ALTER TABLE public.chat_audit_log ALTER COLUMN access_mode DROP NOT NULL;
+  END IF;
+
+  -- ── instrutor_slug (nova — Wave 5b-1) ──────────────────────────────────────
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name   = 'chat_audit_log'
+       AND column_name  = 'instrutor_slug'
+  ) THEN
+    ALTER TABLE public.chat_audit_log ADD COLUMN instrutor_slug TEXT;
+  END IF;
+
+  -- ── latency_ms (nova — Wave 5b-1) ──────────────────────────────────────────
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name   = 'chat_audit_log'
+       AND column_name  = 'latency_ms'
+  ) THEN
+    ALTER TABLE public.chat_audit_log ADD COLUMN latency_ms INTEGER;
+  END IF;
+
+END $$;
+
+-- ── Comments (após DO block garantir que colunas existem) ─────────────────────
 
 COMMENT ON COLUMN public.chat_audit_log.force IS
   'Força institucional do recruta (marinha/exercito/aeronautica). '
@@ -37,23 +116,14 @@ COMMENT ON COLUMN public.chat_audit_log.access_mode IS
   'Modo de acesso canônico: full_access | restricted. '
   'Alinhado com contrato de instrutor-send (antes: full/free — divergente).';
 
--- Coluna para instrutor — preparação Wave 5b-1 (inserção via instrutor-send)
-ALTER TABLE public.chat_audit_log
-  ADD COLUMN IF NOT EXISTS instrutor_slug TEXT;
-
 COMMENT ON COLUMN public.chat_audit_log.instrutor_slug IS
   'Slug canônico do instrutor: objetivo | estrategico | didatico. '
   'Populado em Wave 5b-1 quando instrutor-send passar a inserir auditoria.';
-
--- Coluna de latência — preparação Wave 5b-1
-ALTER TABLE public.chat_audit_log
-  ADD COLUMN IF NOT EXISTS latency_ms INTEGER;
 
 COMMENT ON COLUMN public.chat_audit_log.latency_ms IS
   'Latência total do request instrutor-send em milissegundos. '
   'Populado em Wave 5b-1.';
 
--- Índice adicional para instrutor_slug (consultas analíticas Wave 5b)
 CREATE INDEX IF NOT EXISTS idx_chat_audit_instrutor_slug
   ON public.chat_audit_log (instrutor_slug, timestamp_utc DESC)
   WHERE instrutor_slug IS NOT NULL;
