@@ -132,13 +132,14 @@ CREATE INDEX IF NOT EXISTS idx_chat_audit_force
   ON public.chat_audit_log (force, timestamp_utc DESC)
   WHERE force IS NOT NULL;
 
--- ── 2. Recriar v_audit_eventos expondo instrutor_slug ─────────────────────────
+-- ── 2. Recriar v_audit_eventos expondo instrutor_slug e latency_ms ────────────
 -- Additive: adicionar instrutor_slug e latency_ms na view de escrita.
--- chat-central pode passar esses campos quando implementar inserção.
+-- ATENÇÃO: coluna pública mantida como event_id (alias de audit_id) para não
+-- quebrar consumidores existentes. CREATE OR REPLACE não permite renomear colunas.
 
 CREATE OR REPLACE VIEW public.v_audit_eventos AS
 SELECT
-  audit_id,
+  audit_id AS event_id,
   session_id,
   timestamp_utc,
   recruta_id,
