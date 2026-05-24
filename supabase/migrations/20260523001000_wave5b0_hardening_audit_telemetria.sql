@@ -133,19 +133,23 @@ CREATE INDEX IF NOT EXISTS idx_chat_audit_force
   WHERE force IS NOT NULL;
 
 -- ── 2. Recriar v_audit_eventos expondo instrutor_slug e latency_ms ────────────
--- Additive: adicionar instrutor_slug e latency_ms na view de escrita.
--- ATENÇÃO: coluna pública mantida como event_id (alias de audit_id) para não
--- quebrar consumidores existentes. CREATE OR REPLACE não permite renomear colunas.
+-- O banco remoto tem v_audit_eventos com colunas em ordem/nomes divergentes
+-- do schema local (event_id/user_id ao invés de audit_id/session_id).
+-- CREATE OR REPLACE VIEW proíbe renomear colunas existentes.
+-- Solução: DROP VIEW IF EXISTS CASCADE (remove trigger junto) + CREATE VIEW.
+-- O trigger trg_insert_audit é recriado na seção 4.
+-- Compatibilidade: audit_id exposto como event_id (nome público histórico).
 
-CREATE OR REPLACE VIEW public.v_audit_eventos AS
+DROP VIEW IF EXISTS public.v_audit_eventos CASCADE;
+
+CREATE VIEW public.v_audit_eventos AS
 SELECT
-  audit_id AS event_id,
+  audit_id     AS event_id,
   session_id,
   timestamp_utc,
   recruta_id,
   source,
   response_category AS categoria,
-  -- Campos adicionados Wave 5b-0 (nullable — sem breaking change para inserções antigas)
   instrutor_slug,
   latency_ms
 FROM public.chat_audit_log;
@@ -153,7 +157,7 @@ FROM public.chat_audit_log;
 COMMENT ON VIEW public.v_audit_eventos IS
   'View de escrita para auditoria de chat. '
   'INSTEAD OF INSERT trigger resolve identidade canônica via recrutas (não profiles). '
-  'Wave 5b-0: instrutor_slug e latency_ms expostos para inserção futura.';
+  'Wave 5b-0: instrutor_slug e latency_ms expostos; event_id mantido como alias público.';
 
 -- ── 3. Corrigir fn_insert_audit_evento_smart — lookup canônico via recrutas ───
 --
