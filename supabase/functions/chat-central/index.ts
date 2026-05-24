@@ -2,6 +2,11 @@
 // Cérebro institucional: valida HMAC, orquestra resposta do instrutor.
 // Nunca escreve tabelas. Nunca emite C5. Nunca decide unread.
 // SDK OpenAI removido — fetch direto garante OpenAI-Beta: assistants=v2 em todas as chamadas.
+//
+// Wave 5c — otimizações de latência:
+//   1. create-thread-and-run: 3 chamadas HTTP → 1 (economiza ~500–700ms)
+//   2. polling adaptativo: 500ms (early) → 1000ms (late) (economiza ~avg 250ms)
+//   3. timing logs por etapa para diagnóstico em produção
 
 const MAX_SKEW_SECONDS = 300;
 const OPENAI_API_BASE = "https://api.openai.com/v1";
@@ -118,16 +123,28 @@ async function openAIGet(
 }
 
 // ── Polling do run ─────────────────────────────────────────────────────────────
+//
+// Wave 5c: polling adaptativo — 500ms nos primeiros 8 attempts, depois 1000ms.
+// Racional: modelo OpenAI completa tipicamente em 3–8s. Polling a 500ms reduz
+// a janela de detecção de 0–1000ms para 0–500ms (economiza avg ~250ms).
+// Após 4s de espera (8 polls × 500ms) a resposta demora mais — sem ganho em
+// polling curto, então voltamos a 1000ms para não desperdiçar rate limit.
+
+function pollIntervalMs(attempt: number): number {
+  return attempt < 8 ? 500 : 1000;
+}
 
 async function waitForRunReply(
   apiKey: string,
   threadId: string,
   runId: string,
   request_id: string,
+  started: number,
 ): Promise<string> {
-  const MAX_ATTEMPTS = 25;
+  const MAX_ATTEMPTS = 35; // 8×500ms + 27×1000ms = 31s max
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const t_poll_start = Date.now();
     const run = await openAIGet(
       `/threads/${threadId}/runs/${runId}`,
       apiKey,
@@ -135,13 +152,28 @@ async function waitForRunReply(
       "runs.retrieve",
     ) as { status: string; last_error?: { code?: string; message?: string } };
 
+    console.log("[CHAT_CENTRAL_W1] step_poll", {
+      request_id,
+      attempt,
+      run_status: run.status,
+      ms_poll: Date.now() - t_poll_start,
+      ms: Date.now() - started,
+    });
+
     if (run.status === "completed") {
+      const t_msgs_start = Date.now();
       const msgs = await openAIGet(
         `/threads/${threadId}/messages?limit=1&order=desc`,
         apiKey,
         request_id,
         "messages.list",
       ) as { data: Array<{ role: string; content: Array<{ type: string; text?: { value: string } }> }> };
+
+      console.log("[CHAT_CENTRAL_W1] step_messages_list", {
+        request_id,
+        ms_messages_list: Date.now() - t_msgs_start,
+        ms: Date.now() - started,
+      });
 
       const last = msgs.data[0];
       if (last?.role === "assistant" && last.content[0]?.type === "text") {
@@ -162,17 +194,19 @@ async function waitForRunReply(
         run_id:     runId,
         last_error_code:    lastError?.code    ?? null,
         last_error_message: lastError?.message ?? null,
+        ms: Date.now() - started,
       });
       throw new Error(`run_ended:${run.status}:${lastError?.code ?? "unknown"}`);
     }
 
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, pollIntervalMs(attempt)));
   }
 
   console.error("[CHAT_CENTRAL_W1] openai_run_timeout", {
     request_id,
     run_id:   runId,
     attempts: MAX_ATTEMPTS,
+    ms: Date.now() - started,
   });
   throw new Error("run_timeout");
 }
@@ -343,38 +377,41 @@ Deno.serve(async (req) => {
       ms: Date.now() - started,
     });
 
-    // 1. Criar thread
-    const thread = await openAIPost(
-      "/threads",
-      openaiKey,
-      {},
-      request_id,
-      "threads.create",
-    ) as { id: string };
-
-    // 2. Adicionar mensagem do usuário
-    await openAIPost(
-      `/threads/${thread.id}/messages`,
-      openaiKey,
-      { role: "user", content: user_text },
-      request_id,
-      "messages.create",
-    );
-
-    // 3. Criar run
-    const run = await openAIPost(
-      `/threads/${thread.id}/runs`,
+    // Wave 5c: create-thread-and-run em UMA única chamada HTTP.
+    // Antes: POST /threads + POST /threads/:id/messages + POST /threads/:id/runs = 3 calls (~500–700ms).
+    // Agora: POST /threads/runs com thread embutido = 1 call (~200–350ms).
+    // Ref: https://platform.openai.com/docs/api-reference/runs/createThreadAndRun
+    const t_create = Date.now();
+    const threadAndRun = await openAIPost(
+      "/threads/runs",
       openaiKey,
       {
-        assistant_id:             agentId,
-        additional_instructions:  additionalInstructions,
+        assistant_id:            agentId,
+        additional_instructions: additionalInstructions,
+        thread: {
+          messages: [{ role: "user", content: user_text }],
+        },
       },
       request_id,
-      "runs.create",
-    ) as { id: string };
+      "threads.create_and_run",
+    ) as { id: string; thread_id: string };
 
-    // 4. Aguardar conclusão do run e recuperar resposta
-    const reply = await waitForRunReply(openaiKey, thread.id, run.id, request_id);
+    console.log("[CHAT_CENTRAL_W1] step_create_thread_and_run", {
+      request_id,
+      thread_id: threadAndRun.thread_id,
+      run_id:    threadAndRun.id,
+      ms_create: Date.now() - t_create,
+      ms:        Date.now() - started,
+    });
+
+    // Aguardar conclusão do run e recuperar resposta
+    const reply = await waitForRunReply(
+      openaiKey,
+      threadAndRun.thread_id,
+      threadAndRun.id,
+      request_id,
+      started,
+    );
 
     // ── [CHAT_CENTRAL_W1] openai_success ─────────────────────────────────────
     console.log("[CHAT_CENTRAL_W1] openai_success", {

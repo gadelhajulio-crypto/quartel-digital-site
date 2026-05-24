@@ -121,10 +121,17 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    const t_identity_start = Date.now();
     const { data: identidade, error: identidadeError } = await supabaseUser
       .from("v_identidade_recruta")
       .select("*")
       .maybeSingle();
+
+    console.log("[INSTRUTOR_SEND_W1] step_identity_query", {
+      request_id,
+      ms_identity: Date.now() - t_identity_start,
+      ms: Date.now() - started,
+    });
 
     if (identidadeError) {
       console.error("[INSTRUTOR_SEND_IDENTITY_ERROR]", {
@@ -227,6 +234,7 @@ Deno.serve(async (req) => {
       ms: Date.now() - started,
     });
 
+    const t_central_start = Date.now();
     const centralRes = await fetch(chatCentralUrl, {
       method: "POST",
       headers: {
@@ -269,6 +277,7 @@ Deno.serve(async (req) => {
       central_reason: centralData.reason ?? null,
       central_request_id: centralData.request_id ?? null,
       has_reply: !!centralData.reply,
+      ms_central: Date.now() - t_central_start,
       ms: Date.now() - started,
     });
 
@@ -317,6 +326,7 @@ Deno.serve(async (req) => {
       thread_id: identidade.thread_id ?? null,
     };
 
+    const t_rpc_start = Date.now();
     console.log("[INSTRUTOR_SEND_W1] rpc_send_start", {
       request_id,
       correlation_id: finalCorrelationId,
@@ -367,6 +377,7 @@ Deno.serve(async (req) => {
       request_id,
       correlation_id: finalCorrelationId,
       has_rpc_data: !!rpcData,
+      ms_rpc: Date.now() - t_rpc_start,
       ms: Date.now() - started,
     });
 
@@ -377,7 +388,15 @@ Deno.serve(async (req) => {
       ms: Date.now() - started,
     });
 
-    // ── 9. Notificação push — awaited (Deno descarta Promises após return) ──────
+    // ── 9. Notificação push — fora do caminho crítico via EdgeRuntime.waitUntil ──
+    //
+    // Wave 5c: chat-notify é movido para APÓS o return usando EdgeRuntime.waitUntil().
+    // Antes: await fetch(chat-notify) bloqueava ~300–600ms antes do return.
+    // Agora: EdgeRuntime.waitUntil(promise) mantém o isolate vivo após o return,
+    //        garantindo entrega do push sem custo percebido pelo usuário.
+    //
+    // Fallback: se EdgeRuntime não estiver disponível (ambiente não-Supabase),
+    // a promise é awaited diretamente para garantir entrega.
     const conversa_id = (rpcData as any)?.conversa_id as string | undefined;
 
     if (!conversa_id) {
@@ -394,7 +413,7 @@ Deno.serve(async (req) => {
       const chatNotifyUrl = `${supabaseUrl}/functions/v1/chat-notify`;
       const notifyServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-      console.log("[INSTRUTOR_SEND_W1] chat_notify_called", {
+      console.log("[INSTRUTOR_SEND_W1] chat_notify_dispatched", {
         request_id,
         conversa_id_prefix: conversa_id.slice(0, 8),
         recruta_id_prefix: recruta_id.slice(0, 8),
@@ -403,44 +422,44 @@ Deno.serve(async (req) => {
         ms: Date.now() - started,
       });
 
-      // AWAIT obrigatório: fire-and-forget não é confiável em Supabase Edge Functions.
-      // O isolate Deno pode ser encerrado logo após return json(), silenciando o fetch
-      // antes de qualquer byte ser enviado à chat-notify. Awaitar garante entrega.
-      // Latência adicionada ≈ RTT da chat-notify (~200-400ms) — aceitável.
-      try {
-        const notifyRes = await fetch(chatNotifyUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            // Authorization: para o gateway Supabase autenticar a request
-            Authorization: `Bearer ${notifyServiceKey}`,
-            // x-qd-notify-key: autenticação interna function-to-function
-            "x-qd-notify-key": notifyServiceKey,
-          },
-          body: JSON.stringify({ recruta_id, conversa_id }),
-        });
-
-        // Ler body antes de logar (stream só pode ser lido uma vez)
+      const t_notify_start = Date.now();
+      const notifyPromise = fetch(chatNotifyUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${notifyServiceKey}`,
+          "x-qd-notify-key": notifyServiceKey,
+        },
+        body: JSON.stringify({ recruta_id, conversa_id }),
+      }).then(async (notifyRes) => {
         let notifyBodyRaw = "";
         try { notifyBodyRaw = await notifyRes.text(); } catch { /* ignorado */ }
-
         console.log("[INSTRUTOR_SEND_W1] chat_notify_status", {
           request_id,
-          url: chatNotifyUrl,
           http_status: notifyRes.status,
           ok: notifyRes.ok,
-          content_type: notifyRes.headers.get("content-type") ?? null,
           body_prefix: notifyBodyRaw.slice(0, 100),
+          ms_notify: Date.now() - t_notify_start,
           ms: Date.now() - started,
         });
-      } catch (err) {
+      }).catch((err) => {
         console.error("[INSTRUTOR_SEND_W1] chat_notify_error", {
           request_id,
-          url: chatNotifyUrl,
           error_code: String(err).slice(0, 80),
+          ms_notify: Date.now() - t_notify_start,
           ms: Date.now() - started,
         });
-        // Push falhou mas não bloqueia resposta ao app
+      });
+
+      // EdgeRuntime.waitUntil: mantém o isolate vivo após o return para entregar o push.
+      // Disponível no Supabase Edge Runtime >= 1.19.0.
+      // Fallback para await se não disponível (ex: teste local).
+      // deno-lint-ignore no-explicit-any
+      const edgeRuntime = (globalThis as any).EdgeRuntime;
+      if (edgeRuntime?.waitUntil) {
+        edgeRuntime.waitUntil(notifyPromise);
+      } else {
+        await notifyPromise;
       }
     }
 
