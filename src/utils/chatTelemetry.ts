@@ -14,6 +14,7 @@ export type ChatC5Event =
   | 'messages_load_failed'
   | 'message_send_started'
   | 'message_send_succeeded'
+  | 'message_send_succeeded_after_abort'
   | 'message_send_failed'
   | 'message_retry_started'
   | 'message_retry_succeeded'
