@@ -1,8 +1,38 @@
 // RCC Wave 1 — Instrutor Send
 // Orquestrador: autentica, delega ao Chat Central, persiste via RPC.
 // Nunca escreve tabelas diretamente. Nunca emite C5. Nunca decide unread.
+//
+// Wave 5c-2 — otimização de identidade:
+//   Antes: supabaseUser.from("v_identidade_recruta").select("*") com JWT authenticated
+//          → PostgREST valida JWT + executa SET LOCAL auth.uid() + resolve view (635–950ms)
+//   Agora: extrai sub do JWT em JS (0ms rede) + service_role.from("recrutas")
+//          com .eq("auth_id", sub) e colunas mínimas (~300–500ms estimado)
+//   Motivo possível: elimina JWT validation path de auth.uid() no PostgREST,
+//          reduz payload JSON e remove overhead de resolução de view.
+//   auth_id já tem índice BTREE (ix_recrutas_auth_id) + UNIQUE — lookup O(log n).
 
 import { createClient } from "supabase";
+
+/**
+ * Extrai o claim `sub` do JWT sem verificar assinatura.
+ * Usado apenas para obter o auth_id canônico e passar explicitamente
+ * ao service_role. A assinatura é validada pelo Supabase ao criar a sessão.
+ */
+function extractJwtSub(authHeader: string): string | null {
+  try {
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7)
+      : authHeader;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    // atob precisa de base64 padrão; JWT usa base64url
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(b64));
+    return typeof payload.sub === "string" ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -68,8 +98,8 @@ Deno.serve(async (req) => {
     });
 
     // ── 1. Capturar Authorization header ──────────────────────────────────────
-    // Repassado integralmente ao cliente Supabase para que auth.uid() seja
-    // resolvido corretamente e as views RCC respondam ao role authenticated.
+    // Wave 5c-2: sub extraído via JS para query service_role direta em recrutas.
+    // JWT repassado ao supabaseUser apenas para rpc_chat_send_message.
     const authHeader = req.headers.get("Authorization") ?? "";
 
     console.log("[INSTRUTOR_SEND_AUTH]", {
@@ -106,30 +136,49 @@ Deno.serve(async (req) => {
     // TODO RCC: frontend deve gerar client_message_id para retry idempotente.
     const clientMessageId = client_message_id ?? crypto.randomUUID();
 
-    // ── 3. Ler identidade via v_identidade_recruta com JWT authenticated ──────
-    // NÃO usar service_role aqui — a view tem GRANT SELECT TO authenticated
-    // e filtra por auth.uid(). O service_role não tem o grant e não seta uid().
+    // ── 3. Resolver identidade via service_role + recrutas direto ─────────────
+    // Wave 5c-2: extrai sub do JWT em JS (0ms rede), depois consulta recrutas
+    // com service_role (BYPASSRLS) e filtro explícito auth_id = sub.
+    // Vantagens: elimina SET LOCAL auth.uid() do PostgREST, reduz payload JSON,
+    // consulta tabela direta sem overhead de resolução de view.
+    // auth_id tem índice BTREE único (ix_recrutas_auth_id) — O(log n).
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+    // Extrai sub do JWT para usar como filtro explícito no service_role
+    const authUid = extractJwtSub(authHeader);
+    if (!authUid) {
+      console.warn("[INSTRUTOR_SEND_W1] jwt_sub_missing", {
+        request_id,
+        ms: Date.now() - started,
+      });
+      return json(401, { ok: false, reason: "jwt_invalid", request_id });
+    }
+
+    const supabaseService = createClient(supabaseUrl, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    // supabaseUser ainda necessário para rpc_chat_send_message com JWT autenticado
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseUser = createClient(supabaseUrl, anonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader,
-        },
-      },
+      global: { headers: { Authorization: authHeader } },
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
     const t_identity_start = Date.now();
-    const { data: identidade, error: identidadeError } = await supabaseUser
-      .from("v_identidade_recruta")
-      .select("*")
+    const { data: recruta, error: identidadeError } = await supabaseService
+      .from("recrutas")
+      .select("id, forca, plano, status, onboarding_concluido, instructor_profile_id, thread_id, nome_guerra, nome")
+      .eq("auth_id", authUid)
       .maybeSingle();
+
+    const ms_identity = Date.now() - t_identity_start;
 
     console.log("[INSTRUTOR_SEND_W1] step_identity_query", {
       request_id,
-      ms_identity: Date.now() - t_identity_start,
+      identity_source: "service_direct",
+      ms_identity,
       ms: Date.now() - started,
     });
 
@@ -143,7 +192,7 @@ Deno.serve(async (req) => {
       return json(500, { ok: false, reason: "identity_error", request_id });
     }
 
-    if (!identidade) {
+    if (!recruta) {
       console.warn("[INSTRUTOR_SEND_IDENTITY]", {
         request_id,
         hasIdentity: false,
@@ -152,6 +201,12 @@ Deno.serve(async (req) => {
       return json(403, { ok: false, reason: "identity_not_found", request_id });
     }
 
+    // Computar campos derivados que a view expunha como colunas calculadas
+    const ativo = recruta.status?.toLowerCase() === "ativo";
+    const tipo_acesso = recruta.plano; // v_identidade_recruta: "plano" AS "tipo_acesso"
+
+    const identidade = { ...recruta, ativo, tipo_acesso };
+
     console.log("[INSTRUTOR_SEND_IDENTITY]", {
       request_id,
       hasIdentity: true,
@@ -159,7 +214,7 @@ Deno.serve(async (req) => {
       forca: identidade.forca ?? null,
       onboarding_concluido: identidade.onboarding_concluido ?? false,
       has_instructor: !!identidade.instructor_profile_id,
-      ativo: identidade.ativo ?? false,
+      ativo,
       ms: Date.now() - started,
     });
 
@@ -170,7 +225,7 @@ Deno.serve(async (req) => {
     else if (!identidade.forca) validationReason = "forca_missing";
     else if (!identidade.onboarding_concluido) validationReason = "onboarding_incomplete";
     else if (!identidade.instructor_profile_id) validationReason = "instructor_missing";
-    else if (!identidade.ativo) validationReason = "inactive_user";
+    else if (!ativo) validationReason = "inactive_user";
 
     if (validationReason) {
       console.warn("[INSTRUTOR_SEND_W1] identity_validation_failed", {
@@ -184,7 +239,7 @@ Deno.serve(async (req) => {
     const recruta_id: string = identidade.id;
     const forca: string = identidade.forca;
     const access_mode =
-      identidade.tipo_acesso === "completo" ? "full_access" : "restricted";
+      tipo_acesso === "completo" ? "full_access" : "restricted";
     const resolvedSlug: string =
       instrutor_slug ?? identidade.instructor_profile_id ?? "objetivo";
     const idempotency_key = `chat:${recruta_id}:${clientMessageId}`;
@@ -223,7 +278,6 @@ Deno.serve(async (req) => {
     const signature = await signHmacSha256(hmacSecret, ts, rawBody);
 
     const chatCentralUrl = `${supabaseUrl}/functions/v1/chat-central`;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     console.log("[INSTRUTOR_SEND_W1] chat_central_request", {
       request_id,

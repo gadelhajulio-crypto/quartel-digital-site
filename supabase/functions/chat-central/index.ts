@@ -7,6 +7,12 @@
 //   1. create-thread-and-run: 3 chamadas HTTP → 1 (economiza ~500–700ms)
 //   2. polling adaptativo: 500ms (early) → 1000ms (late) (economiza ~avg 250ms)
 //   3. timing logs por etapa para diagnóstico em produção
+//
+// Wave 5c-2 — otimizações de infra:
+//   4. initial_poll_delay_ms = 1500: espera 1.5s antes do primeiro poll.
+//      Racional: produção mostra primeira poll sempre "queued" (modelo não iniciou).
+//      Eliminar 2–3 polls wasted × ~150ms RTT = ~300–450ms economizados.
+//      Se o modelo completar em < 1.5s: impossível em produção (mínimo ~3s observado).
 
 const MAX_SKEW_SECONDS = 300;
 const OPENAI_API_BASE = "https://api.openai.com/v1";
@@ -129,6 +135,12 @@ async function openAIGet(
 // a janela de detecção de 0–1000ms para 0–500ms (economiza avg ~250ms).
 // Após 4s de espera (8 polls × 500ms) a resposta demora mais — sem ganho em
 // polling curto, então voltamos a 1000ms para não desperdiçar rate limit.
+//
+// Wave 5c-2: 1500ms de espera inicial antes do primeiro poll.
+// Produção mostra que o primeiro poll é sempre "queued" (modelo não iniciou).
+// Economiza 2–3 round-trips desnecessários (~300–450ms).
+
+const INITIAL_POLL_DELAY_MS = 1500;
 
 function pollIntervalMs(attempt: number): number {
   return attempt < 8 ? 500 : 1000;
@@ -142,6 +154,19 @@ async function waitForRunReply(
   started: number,
 ): Promise<string> {
   const MAX_ATTEMPTS = 35; // 8×500ms + 27×1000ms = 31s max
+
+  // Wave 5c-2: espera inicial antes do primeiro poll.
+  // Produção: modelos levam ~3s mínimo. Pular polls "queued" economiza RTTs.
+  console.log("[CHAT_CENTRAL_W1] poll_wait_start", {
+    request_id,
+    delay_ms: INITIAL_POLL_DELAY_MS,
+    ms: Date.now() - started,
+  });
+  await new Promise((r) => setTimeout(r, INITIAL_POLL_DELAY_MS));
+  console.log("[CHAT_CENTRAL_W1] poll_wait_done", {
+    request_id,
+    ms: Date.now() - started,
+  });
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const t_poll_start = Date.now();
