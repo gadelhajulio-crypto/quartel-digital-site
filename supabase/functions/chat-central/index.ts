@@ -13,15 +13,141 @@
 //      Racional: produção mostra primeira poll sempre "queued" (modelo não iniciou).
 //      Eliminar 2–3 polls wasted × ~150ms RTT = ~300–450ms economizados.
 //      Se o modelo completar em < 1.5s: impossível em produção (mínimo ~3s observado).
+//
+// Wave 5d — estabilidade institucional:
+//   5. Retry inteligente: max 2 retries para 429/5xx/network com backoff 500ms→1000ms.
+//      NÃO retry em 4xx cliente (prompt inválido, auth).
+//   6. Circuit breaker leve: in-memory por isolate, janela 60s, threshold 3 falhas.
+//      Após abertura: 30s de quarentena → resposta fallback institucional.
+//   7. Token & cost observability: log de prompt_tokens, completion_tokens,
+//      total_tokens, estimated_cost_usd, model — sem persistir conteúdo.
 
 const MAX_SKEW_SECONDS = 300;
-const OPENAI_API_BASE = "https://api.openai.com/v1";
+const OPENAI_API_BASE  = "https://api.openai.com/v1";
+
+// Fallback institucional quando circuit breaker está aberto.
+const FALLBACK_REPLY =
+  "Serviço de instrução temporariamente indisponível. " +
+  "Aguarde alguns instantes e tente novamente.";
 
 const FORCE_AGENTS: Record<string, string> = {
   marinha:     "asst_6TFPlmsULj3fpxArwlkO16nL",
   exercito:    "asst_PL5I6dwKRvHuw6cyy2cNVXHp",
   aeronautica: "asst_0FpXW9zHkPDVBoIuL5fRi6hX",
 };
+
+// ── Circuit breaker (Wave 5d) ─────────────────────────────────────────────────
+// Estado in-memory por isolate Deno. Supabase reutiliza isolates entre requests
+// na mesma região — CB reduz pressão em cascata quando OpenAI degrada.
+// Soft circuit breaker: não persiste entre cold starts (sem Redis externo).
+
+const CB_WINDOW_MS = 60_000; // janela rolling de 1 minuto
+const CB_THRESHOLD = 3;      // ≥3 falhas na janela → abrir circuito
+const CB_OPEN_MS   = 30_000; // manter aberto por 30s; após isso: half-open
+
+const _cb = { failures: 0, windowStart: 0, openedAt: 0 };
+
+function cbIsOpen(request_id: string): boolean {
+  const now = Date.now();
+  if (now - _cb.windowStart > CB_WINDOW_MS) {
+    _cb.failures = 0; _cb.windowStart = now; _cb.openedAt = 0;
+  }
+  if (_cb.failures >= CB_THRESHOLD) {
+    if (now - _cb.openedAt < CB_OPEN_MS) {
+      console.warn("[CHAT_CENTRAL_W1] circuit_breaker_open", {
+        request_id, failures: _cb.failures,
+        open_age_ms: now - _cb.openedAt,
+      });
+      return true;
+    }
+    // half-open: permite uma probe request; zera falhas
+    console.log("[CHAT_CENTRAL_W1] circuit_breaker_half_open", {
+      request_id, failures: _cb.failures,
+    });
+    _cb.failures = 0; _cb.openedAt = 0;
+  }
+  return false;
+}
+
+function cbRecordFailure(request_id: string): void {
+  const now = Date.now();
+  if (now - _cb.windowStart > CB_WINDOW_MS) {
+    _cb.failures = 0; _cb.windowStart = now;
+  }
+  _cb.failures++;
+  if (_cb.failures >= CB_THRESHOLD && _cb.openedAt === 0) {
+    _cb.openedAt = now;
+    console.warn("[CHAT_CENTRAL_W1] circuit_breaker_tripped", {
+      request_id, failures: _cb.failures,
+    });
+  }
+}
+
+function cbRecordSuccess(): void {
+  _cb.failures = 0; _cb.openedAt = 0;
+}
+
+// ── Retry (Wave 5d) ───────────────────────────────────────────────────────────
+// Retryable: 429 rate limit, 5xx server error, network error (fetch throws).
+// NÃO retryable: 4xx (prompt inválido, auth, bad request).
+
+const RETRY_MAX     = 2;
+const RETRY_BASE_MS = 500;
+
+function isRetryableOpenAIError(err: unknown): boolean {
+  const status = (err as any)?.openai_status ?? 0;
+  return status === 0 || status === 429 || status >= 500;
+}
+
+async function withOpenAIRetry<T>(
+  fn: () => Promise<T>,
+  label: string,
+  request_id: string,
+): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= RETRY_MAX; attempt++) {
+    if (attempt > 0) {
+      const delay_ms = RETRY_BASE_MS * (2 ** (attempt - 1)); // 500ms, 1000ms
+      console.warn("[CHAT_CENTRAL_W1] openai_retry", {
+        request_id, label, attempt, delay_ms,
+        status: (lastErr as any)?.openai_status ?? 0,
+      });
+      await new Promise((r) => setTimeout(r, delay_ms));
+    }
+    try {
+      const result = await fn();
+      if (attempt > 0) {
+        console.log("[CHAT_CENTRAL_W1] openai_retry_succeeded", {
+          request_id, label, attempt,
+        });
+        cbRecordSuccess();
+      }
+      return result;
+    } catch (err) {
+      lastErr = err;
+      if (!isRetryableOpenAIError(err)) throw err; // propagar imediatamente
+      cbRecordFailure(request_id);
+    }
+  }
+  throw lastErr;
+}
+
+// ── Token cost estimation (Wave 5d) ───────────────────────────────────────────
+// Preços USD por token (aproximados, maio 2025). Apenas para observabilidade —
+// não usar para faturamento. Fallback para gpt-4o quando modelo desconhecido.
+
+const COST_RATES: Record<string, { input: number; output: number }> = {
+  "gpt-4o":        { input: 2.50e-6, output: 10.00e-6 },
+  "gpt-4o-mini":   { input: 0.15e-6, output:  0.60e-6 },
+  "gpt-4-turbo":   { input: 10.0e-6, output: 30.00e-6 },
+  "gpt-4":         { input: 30.0e-6, output: 60.00e-6 },
+  "gpt-3.5-turbo": { input: 0.50e-6, output:  1.50e-6 },
+};
+
+function estimateCostUsd(model: string, promptTokens: number, completionTokens: number): number {
+  const r = COST_RATES[model] ?? COST_RATES["gpt-4o"];
+  return promptTokens * r.input + completionTokens * r.output;
+}
 
 const PERSONALITY_INSTRUCTIONS: Record<string, string> = {
   objetivo:    "Tom direto, disciplinado e objetivo. Vá ao ponto sem rodeios.",
@@ -152,6 +278,7 @@ async function waitForRunReply(
   runId: string,
   request_id: string,
   started: number,
+  agentLabel?: string,
 ): Promise<string> {
   const MAX_ATTEMPTS = 35; // 8×500ms + 27×1000ms = 31s max
 
@@ -170,12 +297,23 @@ async function waitForRunReply(
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const t_poll_start = Date.now();
-    const run = await openAIGet(
-      `/threads/${threadId}/runs/${runId}`,
-      apiKey,
-      request_id,
+
+    // Wave 5d: retry para 429/5xx/network — NÃO retry para 4xx (run inválido).
+    const run = await withOpenAIRetry(
+      () => openAIGet(
+        `/threads/${threadId}/runs/${runId}`,
+        apiKey,
+        request_id,
+        "runs.retrieve",
+      ),
       "runs.retrieve",
-    ) as { status: string; last_error?: { code?: string; message?: string } };
+      request_id,
+    ) as {
+      status: string;
+      model?: string;
+      usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+      last_error?: { code?: string; message?: string };
+    };
 
     console.log("[CHAT_CENTRAL_W1] step_poll", {
       request_id,
@@ -186,12 +324,31 @@ async function waitForRunReply(
     });
 
     if (run.status === "completed") {
+      // Wave 5d: log de token usage e custo estimado por request.
+      if (run.usage && run.model) {
+        const cost = estimateCostUsd(run.model, run.usage.prompt_tokens, run.usage.completion_tokens);
+        console.log("[CHAT_CENTRAL_W1] token_usage", {
+          request_id,
+          model:               run.model,
+          force_agent:         agentLabel ?? "unknown",
+          prompt_tokens:       run.usage.prompt_tokens,
+          completion_tokens:   run.usage.completion_tokens,
+          total_tokens:        run.usage.total_tokens,
+          estimated_cost_usd:  parseFloat(cost.toFixed(6)),
+          ms:                  Date.now() - started,
+        });
+      }
+
       const t_msgs_start = Date.now();
-      const msgs = await openAIGet(
-        `/threads/${threadId}/messages?limit=1&order=desc`,
-        apiKey,
-        request_id,
+      const msgs = await withOpenAIRetry(
+        () => openAIGet(
+          `/threads/${threadId}/messages?limit=1&order=desc`,
+          apiKey,
+          request_id,
+          "messages.list",
+        ),
         "messages.list",
+        request_id,
       ) as { data: Array<{ role: string; content: Array<{ type: string; text?: { value: string } }> }> };
 
       console.log("[CHAT_CENTRAL_W1] step_messages_list", {
@@ -221,6 +378,7 @@ async function waitForRunReply(
         last_error_message: lastError?.message ?? null,
         ms: Date.now() - started,
       });
+      cbRecordFailure(request_id);
       throw new Error(`run_ended:${run.status}:${lastError?.code ?? "unknown"}`);
     }
 
@@ -392,6 +550,23 @@ Deno.serve(async (req) => {
     const additionalInstructions = buildAdditionalInstructions(instrutor_slug, forca, access_mode);
     const correlation_id = crypto.randomUUID();
 
+    // ── Wave 5d: circuit breaker check ───────────────────────────────────────
+    // Se o circuito estiver aberto (OpenAI degradado), retornar fallback imediato
+    // sem saturar a fila de retries. Estado reset após CB_OPEN_MS (30s).
+    if (cbIsOpen(request_id)) {
+      console.warn("[CHAT_CENTRAL_W1] circuit_breaker_fallback", {
+        request_id, correlation_id, forca, ms: Date.now() - started,
+      });
+      return json(200, {
+        ok: true,
+        reply: FALLBACK_REPLY,
+        degraded: true,
+        correlation_id,
+        request_id,
+        ms: Date.now() - started,
+      });
+    }
+
     // ── [CHAT_CENTRAL_W1] openai_start ───────────────────────────────────────
     console.log("[CHAT_CENTRAL_W1] openai_start", {
       request_id,
@@ -406,19 +581,25 @@ Deno.serve(async (req) => {
     // Antes: POST /threads + POST /threads/:id/messages + POST /threads/:id/runs = 3 calls (~500–700ms).
     // Agora: POST /threads/runs com thread embutido = 1 call (~200–350ms).
     // Ref: https://platform.openai.com/docs/api-reference/runs/createThreadAndRun
+    //
+    // Wave 5d: wrapped em withOpenAIRetry para 429/5xx/network (max 2 retries).
     const t_create = Date.now();
-    const threadAndRun = await openAIPost(
-      "/threads/runs",
-      openaiKey,
-      {
-        assistant_id:            agentId,
-        additional_instructions: additionalInstructions,
-        thread: {
-          messages: [{ role: "user", content: user_text }],
+    const threadAndRun = await withOpenAIRetry(
+      () => openAIPost(
+        "/threads/runs",
+        openaiKey,
+        {
+          assistant_id:            agentId,
+          additional_instructions: additionalInstructions,
+          thread: {
+            messages: [{ role: "user", content: user_text }],
+          },
         },
-      },
-      request_id,
+        request_id,
+        "threads.create_and_run",
+      ),
       "threads.create_and_run",
+      request_id,
     ) as { id: string; thread_id: string };
 
     console.log("[CHAT_CENTRAL_W1] step_create_thread_and_run", {
@@ -429,14 +610,19 @@ Deno.serve(async (req) => {
       ms:        Date.now() - started,
     });
 
-    // Aguardar conclusão do run e recuperar resposta
+    // Aguardar conclusão do run e recuperar resposta.
+    // Wave 5d: agentLabel = forca para token_usage log.
     const reply = await waitForRunReply(
       openaiKey,
       threadAndRun.thread_id,
       threadAndRun.id,
       request_id,
       started,
+      forca,
     );
+
+    // Wave 5d: sucesso → reset circuit breaker
+    cbRecordSuccess();
 
     // ── [CHAT_CENTRAL_W1] openai_success ─────────────────────────────────────
     console.log("[CHAT_CENTRAL_W1] openai_success", {
@@ -457,10 +643,15 @@ Deno.serve(async (req) => {
   } catch (err) {
     const errStr = String(err);
     let reason = "internal_error";
-    if (errStr.includes("run_ended:"))  reason = errStr.replace("Error: ", "").split(":").slice(0, 2).join(":");
-    else if (errStr.includes("run_timeout"))   reason = "openai_run_timeout";
-    else if (errStr.includes("openai_fetch_failed")) reason = "openai_error";
-    else if (errStr.toLowerCase().includes("openai")) reason = "openai_error";
+    let isOpenAIFailure = false;
+    if (errStr.includes("run_ended:"))           { reason = errStr.replace("Error: ", "").split(":").slice(0, 2).join(":"); isOpenAIFailure = true; }
+    else if (errStr.includes("run_timeout"))     { reason = "openai_run_timeout"; isOpenAIFailure = true; }
+    else if (errStr.includes("openai_fetch_failed")) { reason = "openai_error"; isOpenAIFailure = true; }
+    else if (errStr.toLowerCase().includes("openai")) { reason = "openai_error"; isOpenAIFailure = true; }
+
+    // Wave 5d: falhas OpenAI não capturadas pelo retry também contam no CB
+    // (ex: run_timeout após MAX_ATTEMPTS, run_ended:failed)
+    if (isOpenAIFailure) cbRecordFailure(request_id);
 
     console.error("[CHAT_CENTRAL_W1] exception", {
       request_id,
