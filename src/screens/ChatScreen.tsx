@@ -177,8 +177,19 @@ function InstrutorMessage({
 
 // EmptyConversationState removido — substituído por mensagem inicial do instrutor
 
+// Wave 5e-4: fases institucionais de processamento percebido.
+// Tom: operacional/institucional — nunca casual ou chatbot.
+// Cadência: 2s por fase → reflete o pipeline real (identity → OpenAI run → polling).
+// Fases param na última para não criar expectativa de resposta infinita.
+const PROCESSING_PHASES = [
+  'Analisando sua consulta...',
+  'Consultando material autorizado...',
+  'Elaborando resposta...',
+] as const;
+
 function ProcessingIndicator({ glowColor }: { glowColor: string }) {
   const dotOpacity = useRef(new Animated.Value(0.3)).current;
+  const [phaseIndex, setPhaseIndex] = useState(0);
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -191,6 +202,13 @@ function ProcessingIndicator({ glowColor }: { glowColor: string }) {
     return () => loop.stop();
   }, [dotOpacity]);
 
+  useEffect(() => {
+    // Avança uma fase a cada 2s; para na última (sem loop).
+    if (phaseIndex >= PROCESSING_PHASES.length - 1) return;
+    const t = setTimeout(() => setPhaseIndex((i) => i + 1), 2000);
+    return () => clearTimeout(t);
+  }, [phaseIndex]);
+
   return (
     <View style={processingStyles.row}>
       <View style={[processingStyles.bar, { backgroundColor: glowColor }]} />
@@ -201,7 +219,7 @@ function ProcessingIndicator({ glowColor }: { glowColor: string }) {
           { color: tatico.colors.muted, opacity: dotOpacity },
         ]}
       >
-        Processando resposta ···
+        {PROCESSING_PHASES[phaseIndex]}
       </Animated.Text>
     </View>
   );
@@ -351,6 +369,9 @@ export default function ChatScreen() {
   const [isSending, setIsSending] = useState(false);
   const [inputText, setInputText] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
+
+  // Wave 5e-4: timestamp do início do envio para medir perceived_wait_ms.
+  const sendStartedAtRef = useRef<number>(0);
 
   // Retry: mantém o client_message_id da última tentativa falha
   const pendingRetry = useRef<{ text: string; client_message_id: string } | null>(null);
@@ -575,6 +596,8 @@ export default function ChatScreen() {
       setShowDraftHint(false);
       clearDraft(); // draft limpo no momento do envio — não aguarda confirmação
       setIsSending(true);
+      // Wave 5e-4: registrar timestamp para medir perceived_wait_ms no final.
+      sendStartedAtRef.current = Date.now();
       pendingRetry.current = null;
 
       if (existingClientMessageId) {
@@ -582,6 +605,8 @@ export default function ChatScreen() {
       } else {
         logChatEvent('message_send_started', { instrutor_codigo: instructorSlug });
       }
+      // Wave 5e-4: streaming_started — momento em que o indicador de processamento aparece.
+      logChatEvent('streaming_started', { instrutor_codigo: instructorSlug });
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
 
       const idempotency_key = `chat:${recrutaId}:${clientMsgId}`;
@@ -617,6 +642,17 @@ export default function ChatScreen() {
             },
           );
           await fetchMensagens(cid);
+          // Wave 5e-4: medir perceived_wait_ms (send button → mensagem visível na lista).
+          const perceived_wait_ms = Date.now() - sendStartedAtRef.current;
+          const phase_reached = Math.min(
+            Math.floor(perceived_wait_ms / 2000),
+            PROCESSING_PHASES.length - 1,
+          );
+          logChatEvent('streaming_completed', {
+            instrutor_codigo: instructorSlug,
+            perceived_wait_ms,
+            phase_reached,
+          });
           logChatEvent('unread_cleared', { instrutor_codigo: instructorSlug });
           await tryMarkRead(cid);
         } else {

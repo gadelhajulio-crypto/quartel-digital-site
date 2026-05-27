@@ -38,7 +38,9 @@ export type ChatC5Event =
   | 'push_dispatch_started'
   | 'push_dispatch_succeeded'
   | 'push_dispatch_failed'
-  | 'push_token_invalidated';
+  | 'push_token_invalidated'
+  | 'streaming_started'
+  | 'streaming_completed';
 
 // Campos permitidos — TypeScript impede campos proibidos em tempo de compilação
 export type ChatC5Meta = {
@@ -52,6 +54,8 @@ export type ChatC5Meta = {
   is_refresh?: boolean;
   with_preview?: number;
   has_more?: boolean;
+  perceived_wait_ms?: number;
+  phase_reached?: number;
 };
 
 /**

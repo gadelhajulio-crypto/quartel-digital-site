@@ -29,6 +29,14 @@
 //      autorizado + escopo de acesso. Personalidade removida daqui (está no
 //      system prompt de cada assistant persona-based).
 //  10. Logs: persona_agent_selected, material_scope_selected, additional_instructions_size.
+//
+// Wave 5e-4 — perceived streaming:
+//  11. PERSONA_POLL_DELAY_MS: delay inicial adaptativo por persona.
+//      objetivo (respostas curtas ~59 tokens)   → 800ms
+//      didatico (respostas médias ~246 tokens)  → 1200ms
+//      estrategico (respostas longas ~278 tokens) → 1500ms
+//      Fallback: INITIAL_POLL_DELAY_MS = 1500ms (comportamento anterior).
+//  12. Log: adaptive_poll_delay_selected com persona e delay escolhido.
 
 const MAX_SKEW_SECONDS = 300;
 const OPENAI_API_BASE  = "https://api.openai.com/v1";
@@ -306,7 +314,18 @@ async function openAIGet(
 // Produção mostra que o primeiro poll é sempre "queued" (modelo não iniciou).
 // Economiza 2–3 round-trips desnecessários (~300–450ms).
 
+// Wave 5c-2: fallback quando persona não reconhecida.
 const INITIAL_POLL_DELAY_MS = 1500;
+
+// Wave 5e-4: delay inicial por persona — baseado em dados de produção.
+// objetivo  (~59 tokens):  completa em ~2s → verificar cedo (800ms)
+// didatico  (~246 tokens): completa em ~3.5s → verificar em 1200ms
+// estrategico (~278 tokens): completa em ~4.5s → manter delay conservador (1500ms)
+const PERSONA_POLL_DELAY_MS: Record<string, number> = {
+  objetivo:    800,
+  didatico:    1200,
+  estrategico: 1500,
+};
 
 function pollIntervalMs(attempt: number): number {
   return attempt < 8 ? 500 : 1000;
@@ -319,17 +338,24 @@ async function waitForRunReply(
   request_id: string,
   started: number,
   agentLabel?: string,
+  initialPollDelayMs: number = INITIAL_POLL_DELAY_MS,
 ): Promise<string> {
   const MAX_ATTEMPTS = 35; // 8×500ms + 27×1000ms = 31s max
 
-  // Wave 5c-2: espera inicial antes do primeiro poll.
-  // Produção: modelos levam ~3s mínimo. Pular polls "queued" economiza RTTs.
-  console.log("[CHAT_CENTRAL_W1] poll_wait_start", {
+  // Wave 5e-4: delay adaptativo por persona (Wave 5c-2 original: 1500ms fixo).
+  // Log antes do wait para diagnóstico de eficácia por persona em produção.
+  console.log("[CHAT_CENTRAL_W1] adaptive_poll_delay_selected", {
     request_id,
-    delay_ms: INITIAL_POLL_DELAY_MS,
+    persona: agentLabel ?? "unknown",
+    delay_ms: initialPollDelayMs,
     ms: Date.now() - started,
   });
-  await new Promise((r) => setTimeout(r, INITIAL_POLL_DELAY_MS));
+  console.log("[CHAT_CENTRAL_W1] poll_wait_start", {
+    request_id,
+    delay_ms: initialPollDelayMs,
+    ms: Date.now() - started,
+  });
+  await new Promise((r) => setTimeout(r, initialPollDelayMs));
   console.log("[CHAT_CENTRAL_W1] poll_wait_done", {
     request_id,
     ms: Date.now() - started,
@@ -674,6 +700,8 @@ Deno.serve(async (req) => {
 
     // Aguardar conclusão do run e recuperar resposta.
     // Wave 5e-3: agentLabel = instrutor_slug (persona) para token_usage log.
+    // Wave 5e-4: delay adaptativo por persona (objetivo < didatico < estrategico).
+    const personaPollDelay = PERSONA_POLL_DELAY_MS[agentLabel] ?? INITIAL_POLL_DELAY_MS;
     const reply = await waitForRunReply(
       openaiKey,
       threadAndRun.thread_id,
@@ -681,6 +709,7 @@ Deno.serve(async (req) => {
       request_id,
       started,
       agentLabel,
+      personaPollDelay,
     );
 
     // Wave 5d: sucesso → reset circuit breaker
