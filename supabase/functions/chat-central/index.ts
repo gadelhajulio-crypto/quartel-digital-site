@@ -32,7 +32,7 @@
 //
 // Wave 5e-4 — perceived streaming:
 //  11. PERSONA_POLL_DELAY_MS: delay inicial adaptativo por persona.
-//      objetivo (respostas curtas ~59 tokens)   → 800ms
+//      objetivo (respostas curtas ~59 tokens)   → 1100ms
 //      didatico (respostas médias ~246 tokens)  → 1200ms
 //      estrategico (respostas longas ~278 tokens) → 1500ms
 //      Fallback: INITIAL_POLL_DELAY_MS = 1500ms (comportamento anterior).
