@@ -21,6 +21,14 @@
 //      Após abertura: 30s de quarentena → resposta fallback institucional.
 //   7. Token & cost observability: log de prompt_tokens, completion_tokens,
 //      total_tokens, estimated_cost_usd, model — sem persistir conteúdo.
+//
+// Wave 5e-3 — persona-first material-bound:
+//   8. FORCE_AGENTS → PERSONA_AGENTS: instrutor_slug escolhe o assistant.
+//      Fallback = objetivo (Sgt. Ramos). Força deixa de ser chave de routing.
+//   9. MATERIAL_SCOPE por força: buildAdditionalInstructions envia força + material
+//      autorizado + escopo de acesso. Personalidade removida daqui (está no
+//      system prompt de cada assistant persona-based).
+//  10. Logs: persona_agent_selected, material_scope_selected, additional_instructions_size.
 
 const MAX_SKEW_SECONDS = 300;
 const OPENAI_API_BASE  = "https://api.openai.com/v1";
@@ -30,10 +38,13 @@ const FALLBACK_REPLY =
   "Serviço de instrução temporariamente indisponível. " +
   "Aguarde alguns instantes e tente novamente.";
 
-const FORCE_AGENTS: Record<string, string> = {
-  marinha:     "asst_6TFPlmsULj3fpxArwlkO16nL",
-  exercito:    "asst_PL5I6dwKRvHuw6cyy2cNVXHp",
-  aeronautica: "asst_0FpXW9zHkPDVBoIuL5fRi6hX",
+// Wave 5e-3: routing por persona (instrutor_slug), não mais por força.
+// Cada assistant tem personalidade própria no system prompt.
+// IDs criados no OpenAI Playground — 2026-05-27.
+const PERSONA_AGENTS: Record<string, string> = {
+  objetivo:    "asst_KDgLZsKBaLmPCNnIe2IUo6rI",  // Sgt. Ramos  — direto, disciplinado
+  estrategico: "asst_aLRyptVWXluQI5k0xqYUzYZM",  // Sgt. Rocha  — analítico, estratégico
+  didatico:    "asst_b36NBDbNMqyphk8n7OqVxrUo",  // Sgt. Sara   — claro, educativo
 };
 
 // ── Circuit breaker (Wave 5d) ─────────────────────────────────────────────────
@@ -149,29 +160,58 @@ function estimateCostUsd(model: string, promptTokens: number, completionTokens: 
   return promptTokens * r.input + completionTokens * r.output;
 }
 
-const PERSONALITY_INSTRUCTIONS: Record<string, string> = {
-  objetivo:    "Tom direto, disciplinado e objetivo. Vá ao ponto sem rodeios.",
-  estrategico: "Tom analítico e estratégico. Explique o raciocínio e o contexto antes de responder.",
-  didatico:    "Tom claro, paciente e educativo. Use exemplos concretos quando ajudar na compreensão.",
+// ── Material scope por força (Wave 5e-3) ──────────────────────────────────────
+// Fonte canônica: migrations/20260129133000_implement_marinha_curriculum.sql
+// Marinha: currículo real com 10 módulos e ~58 aulas.
+// Exército / Aeronáutica: currículo ainda não desenvolvido — placeholder controlado.
+// Personalidade removida daqui: está no system prompt de cada assistant persona-based.
+
+const MATERIAL_SCOPE: Record<string, { full: string; degustacao: string }> = {
+  marinha: {
+    full: [
+      "Regulamento Disciplinar para a Marinha (RDM)",
+      "Instrução Militar Naval: Estatuto dos Militares, Cerimonial, Uniformes, Ordenança",
+      "Higiene e Primeiros Socorros",
+      "Noções de Armamento: armamento leve, munição naval",
+      "Combate a Incêndio a bordo",
+      "Organização Básica da Marinha do Brasil",
+      "Comunicações Navais",
+      "Tradições e Fatos da Marinha do Brasil",
+      "Serviço Geral de Taifa",
+      "Documentos Administrativos",
+    ].join(" • "),
+    degustacao: "RDM: Fundamentos, Contravenção Disciplinar, Natureza das Contravenções",
+  },
+  exercito: {
+    // Currículo não desenvolvido — placeholder controlado (sem inventar)
+    full:       "Regulamento Disciplinar do Exército (RDE) e material complementar do Exército Brasileiro",
+    degustacao: "Introdução ao Regulamento Disciplinar do Exército (RDE)",
+  },
+  aeronautica: {
+    // Currículo não desenvolvido — placeholder controlado (sem inventar)
+    full:       "Regulamento Disciplinar da Aeronáutica (RDA) e material complementar da Força Aérea Brasileira",
+    degustacao: "Introdução ao Regulamento Disciplinar da Aeronáutica (RDA)",
+  },
 };
 
+// Wave 5e-3: buildAdditionalInstructions
+// Envia: força ativa + material autorizado por força + escopo de acesso.
+// NÃO envia: personalidade (está no system prompt do assistant persona-based).
 function buildAdditionalInstructions(
-  instrutor_slug: string,
   forca: string,
   access_mode: string,
 ): string {
-  const personality =
-    PERSONALITY_INSTRUCTIONS[instrutor_slug] ?? PERSONALITY_INSTRUCTIONS.objetivo;
+  const scope = MATERIAL_SCOPE[forca] ?? MATERIAL_SCOPE.marinha;
   const isRestricted = access_mode === "restricted";
+  const materialAtivo = isRestricted ? scope.degustacao : scope.full;
 
   return [
-    `PERSONALIDADE: ${personality}`,
-    `FORÇA: ${forca.toUpperCase()}`,
+    `FORÇA ATIVA: ${forca.toUpperCase()}`,
+    `MATERIAL AUTORIZADO: ${materialAtivo}`,
     isRestricted
-      ? "ESCOPO RESTRITO: Responda apenas sobre conteúdos disponíveis na degustação. Para aprofundamento, oriente o recruta a adquirir o acesso completo de forma institucional e objetiva."
-      : "",
-    "INSTRUÇÕES FIXAS: Mantenha linguagem institucional. Não use emojis. Não invente informações. Seja preciso.",
-  ].filter(Boolean).join("\n");
+      ? "ESCOPO: restrito — responder apenas sobre o material de degustação acima; para aprofundamento, orientar sobre acesso completo de forma institucional"
+      : "ESCOPO: completo — responder sobre qualquer módulo do material autorizado acima",
+  ].join("\n");
 }
 
 // ── OpenAI fetch helpers ───────────────────────────────────────────────────────
@@ -546,9 +586,31 @@ Deno.serve(async (req) => {
       return json(500, { ok: false, reason: "missing_openai_key", request_id });
     }
 
-    const agentId = FORCE_AGENTS[forca] ?? FORCE_AGENTS.marinha;
-    const additionalInstructions = buildAdditionalInstructions(instrutor_slug, forca, access_mode);
+    // Wave 5e-3: routing por persona (instrutor_slug), não mais por força.
+    // Fallback = 'objetivo' (Sgt. Ramos) se slug inválido ou ausente.
+    const agentId = PERSONA_AGENTS[instrutor_slug] ?? PERSONA_AGENTS.objetivo;
+    const agentLabel = instrutor_slug in PERSONA_AGENTS ? instrutor_slug : "objetivo";
+
+    // Material-bound: força define o contexto documental, não o assistant.
+    const additionalInstructions = buildAdditionalInstructions(forca, access_mode);
     const correlation_id = crypto.randomUUID();
+
+    console.log("[CHAT_CENTRAL_W1] persona_agent_selected", {
+      request_id,
+      instrutor_slug,
+      agent_label:   agentLabel,
+      agent_id:      agentId.slice(0, 20),   // prefix seguro para log
+      used_fallback: !(instrutor_slug in PERSONA_AGENTS),
+    });
+
+    console.log("[CHAT_CENTRAL_W1] material_scope_selected", {
+      request_id,
+      forca,
+      access_mode,
+      scope_type:     access_mode === "restricted" ? "degustacao" : "full",
+      scope_is_real:  forca === "marinha",   // marinha tem currículo real; outros placeholder
+      additional_instructions_size: additionalInstructions.length,
+    });
 
     // ── Wave 5d: circuit breaker check ───────────────────────────────────────
     // Se o circuito estiver aberto (OpenAI degradado), retornar fallback imediato
@@ -611,14 +673,14 @@ Deno.serve(async (req) => {
     });
 
     // Aguardar conclusão do run e recuperar resposta.
-    // Wave 5d: agentLabel = forca para token_usage log.
+    // Wave 5e-3: agentLabel = instrutor_slug (persona) para token_usage log.
     const reply = await waitForRunReply(
       openaiKey,
       threadAndRun.thread_id,
       threadAndRun.id,
       request_id,
       started,
-      forca,
+      agentLabel,
     );
 
     // Wave 5d: sucesso → reset circuit breaker
