@@ -318,7 +318,7 @@ async function openAIGet(
 const INITIAL_POLL_DELAY_MS = 1500;
 
 // Wave 5e-4: delay inicial por persona — baseado em dados de produção.
-// objetivo  (~59 tokens):  completa em ~2s → verificar cedo (800ms)
+// objetivo  (~59 tokens):  completa em ~2-3.5s → 1100ms (compromisso entre 800ms e 1500ms)
 // didatico  (~246 tokens): completa em ~3.5s → verificar em 1200ms
 // estrategico (~278 tokens): completa em ~4.5s → manter delay conservador (1500ms)
 const PERSONA_POLL_DELAY_MS: Record<string, number> = {
