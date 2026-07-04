@@ -216,27 +216,48 @@ A fonte da função `create-recruta` (deployada em prod, ACTIVE v33 de 2025-12-1
 
 **Versão:** v33 na auditoria e v33 agora — sem alteração em prod nesse intervalo.
 
-### 🔴 A-9 (URGENTE — possível exposição ATIVA, não item de roadmap): endpoint de criação de contas sem authorization guard
+### A-9 — endpoint de criação de contas sem authorization guard · ✅ MITIGADO POR REMOÇÃO (2026-07-04)
 
-`create-recruta` cria usuários Auth com senha arbitrária e `email_confirm: true` usando `service_role`, com CORS `*`, e **não faz nenhuma verificação de autorização de quem chama** (grep confirma: zero checagem de role/claim/admin no código — só leitura de env e header CORS).
+> **STATUS: RESOLVIDO em 2026-07-04.** A função deployada `create-recruta` foi **removida** (`supabase functions delete create-recruta`) — não consta mais como ACTIVE no projeto. A **fonte permanece versionada** (commit `b386e5d`), então a remoção é **reversível**: reativação futura deve vir acompanhada do guard mínimo descrito ao final desta seção.
+>
+> **Motivo da remoção:** função sem `verify_jwt`, sem guard de autorização no código, usando `service_role` para criar usuários Auth — e **sem consumidor confirmado** após investigação em código (todos os projetos locais + `recruta-padrao-os` no VPS, grep limpo) e em logs de invocação (vazios, nenhum uso registrado). App mobile não a usa. Painel confirmou `verify_jwt` desabilitado.
+
+O texto abaixo preserva o diagnóstico original (histórico do porquê da decisão):
+
+`create-recruta` criava usuários Auth com senha arbitrária e `email_confirm: true` usando `service_role`, com CORS `*`, e **não fazia nenhuma verificação de autorização de quem chama** (grep confirmou: zero checagem de role/claim/admin no código — só leitura de env e header CORS).
 
 **Por que isto pode ser exploração ativa hoje, independente do código:**
 - No Supabase, `verify_jwt = true` exige apenas um JWT **válido** — e a **anon key é um JWT válido** (`role=anon`). A anon key é **pública** (embarcada no app cliente; neste repo o `.env` que a contém está inclusive *tracked no git* — ver §8). Portanto, mesmo com `verify_jwt = true`, qualquer detentor da anon key pode invocar o endpoint.
 - Se `verify_jwt = false`, é pior: chamável **sem token algum**.
 - Em ambos os casos, como o código não valida papel/admin, o resultado é: **quem tiver a URL + a anon key pública pode criar contas arbitrárias em produção agora**.
 
-**Estado da verificação (limite honesto):** o `verify_jwt` **real da função deployada não pôde ser confirmado** nesta sessão — `create-recruta` **não está declarada** em `supabase/config.toml` (as declaradas: `instrutor-send`=true, `chat-central`=false, `chat-notify`=false, `stripe-...`=true), e a Management API não foi acessível read-only daqui (token do CLI no keyring do OS). **Não foi feito teste ao vivo** do endpoint por ser ação destrutiva (criaria usuário real). A escalada **independe** do valor exato de `verify_jwt` pelas razões acima.
+**`verify_jwt` — CONFIRMADO desabilitado** (painel Supabase, "Verify JWT with legacy secret" = off). Ou seja, o gateway não exigia token algum antes de a request chegar ao código, e o código não exigia role/admin → endpoint público de criação de contas. `create-recruta` também **não estava declarada** em `supabase/config.toml` (declaradas: `instrutor-send`=true, `chat-central`=false, `chat-notify`=false, `stripe-...`=true). **Nunca foi feito teste ao vivo** do endpoint (criaria usuário real).
 
-**Ação recomendada IMEDIATA (decisão do responsável, fora do escopo read-only):** confirmar no painel Supabase o `verify_jwt` de `create-recruta` e, independentemente do valor, mitigar já — uma das opções: (a) desabilitar/pausar a função se não estiver em uso; (b) adicionar guard de autorização no código (checar JWT de admin/role antes de criar); (c) restringir invocação. Tratar **antes** e **separado** dos riscos internos A-10/A-11/A-12.
+**Ação tomada (2026-07-04):** escolhida a opção (a) — **remoção da função** (reversível, fonte versionada). Consumidor procurado e não encontrado em código (local + `recruta-padrao-os`) nem em logs. Reativação futura, se necessária, deve seguir a opção (b): guard de autorização + correção de A-10.
+
+**Guard mínimo para eventual reativação:** `verify_jwt=true` + validar `Authorization: Bearer <JWT>` + checar admin (`app_metadata.role==='admin'` ou allowlist) — nunca confiar só na anon key; manter `service_role` apenas server-side; corrigir A-10 (usar `recrutas.id`, não `auth_id`) e adicionar validação de entrada antes do deploy.
 
 ### 🟠 A-10 — Bug latente de identidade (`recruta_id` recebendo `auth_id`)
 A RPC é chamada com `atribuir_missao_inicial({ p_recruta_id: data.user.id })`, mas `data.user.id` é o **`auth_id`** (auth.uid()), **não** o `recrutas.id`. A convenção canônica avisa que `recrutas.id ≠ auth_id`. Se a RPC espera `recrutas.id`, recebe o identificador errado. Como `missaoError` é apenas logado (não fatal), **falha silenciosamente** — a missão inicial pode nunca ser atribuída. Contido (bug interno), mas real.
 
-### 🟠 A-11 — Divergência de schema no INSERT em `recrutas`
-O INSERT usa colunas `email, nome, plano:"basico", status:"ativo"` que **não constam** na descrição canônica atual de `recrutas` (que fala em `tipo_acesso`, `nome_guerra`, `onboarding_concluido`). Função é de dez/2025, anterior às waves recentes — se o schema mudou desde então, o INSERT pode quebrar. Não confirmável sem introspecção de schema.
+### A-11 — ~~Divergência de schema no INSERT em `recrutas`~~ · ❌ REFUTADO (2026-07-04, evidência de schema)
+Flag original (baseado na `MEMORY.md`): o INSERT usaria colunas ausentes do schema. **Refutado por evidência direta.** O `CREATE TABLE public.recrutas` no schema remoto (`supabase/remote/supabase_remote_schema.sql:8365`) contém **todas** as colunas do INSERT: `auth_id`, `email` (NOT NULL), `nome`, `forca` (NOT NULL, CHECK marinha/exercito/aeronautica), `patente`, `plano`, `status`. O INSERT é **schema-válido**. Não há divergência. *(Correção honesta de um over-flag anterior baseado em memória desatualizada, não no schema real.)*
 
-### 🟠 A-12 — RPC órfã `atribuir_missao_inicial`
-Não consta na lista canônica de RPCs (`MEMORY.md`) nem é referenciada pelo cliente. RPC "órfã" do ponto de vista do app — verificar existência/assinatura antes de assumir que funciona.
+### A-12 — RPC `atribuir_missao_inicial` · corrigido: EXISTE (só não é referenciada pelo app)
+Confirmado no schema (`...:782`): a função **existe** (`RETURNS void`, `GRANT ... TO service_role`) e insere em `progresso_missoes(recruta_id, missao_id)` usando `p_recruta_id`. Não é "inexistente" — é apenas **órfã do ponto de vista do app** (só era chamada por `create-recruta`). Reforça A-10: como espera `recrutas.id` e recebia `auth_id`, a atribuição de missão estava quebrada.
 
 ### 🟢 Sem segredos hardcoded
 Usa env `PROJECT_URL`/`SERVICE_ROLE_KEY` (nomes custom, server-side — ok). Libs antigas (`std@0.168.0`), sem risco direto.
+
+### A-13 — Matriz de risco das demais Edge Functions (2026-07-04): nenhuma outra na mesma condição
+Auditoria das funções restantes para garantir que a mitigação de `create-recruta` não deixa equivalente exposta. Guards confirmados por leitura de código + `supabase/config.toml`:
+
+| Função | verify_jwt | service_role | Guard no código | Risco |
+|---|---|---|---|---|
+| ~~create-recruta~~ | off | sim | **NENHUM** | 🔴 ALTO → **removida (A-9)** |
+| `chat-central` | off | não (proxy p/ OpenAI) | **HMAC** (`QD_HMAC_SECRET`, `x-qd-timestamp`, `x-qd-signature`) validado antes de processar | 🟢 baixo |
+| `chat-notify` | off | sim (lê push tokens) | header interno `x-qd-notify-key` (shared-secret function-to-function) | 🟡 baixo/médio |
+| `instrutor-send` | **on** | sim | JWT (valida `sub`) + resolve identidade via `v_identidade_recruta` | 🟢 baixo |
+| `stripe-create-checkout-session` | **on** | — | JWT | 🟢 baixo |
+
+**Conclusão:** `create-recruta` era a **única** função na condição "verify_jwt off + service_role + escrita sensível + sem guard". As duas outras com `verify_jwt=off` têm guard de aplicação (HMAC / chave interna). Nota de acompanhamento (não-bloqueante): revisar depois se a comparação da chave em `chat-notify` é feita de forma robusta (constante-tempo) — é o guard mais fraco do conjunto, mas **não** é exposição equivalente a A-9.
