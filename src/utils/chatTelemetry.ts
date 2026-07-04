@@ -40,7 +40,9 @@ export type ChatC5Event =
   | 'push_dispatch_failed'
   | 'push_token_invalidated'
   | 'streaming_started'
-  | 'streaming_completed';
+  | 'streaming_completed'
+  | 'stream_delta_received'   // primeiro delta SSE recebido pelo cliente
+  | 'stream_fallback';        // streaming indisponível — fallback para polling
 
 // Campos permitidos — TypeScript impede campos proibidos em tempo de compilação
 export type ChatC5Meta = {

@@ -1,69 +1,71 @@
 // RCC Wave 1 — Chat Central
 // Cérebro institucional: valida HMAC, orquestra resposta do instrutor.
 // Nunca escreve tabelas. Nunca emite C5. Nunca decide unread.
-// SDK OpenAI removido — fetch direto garante OpenAI-Beta: assistants=v2 em todas as chamadas.
+// SDK OpenAI removido — fetch direto via Responses API.
 //
-// Wave 5c — otimizações de latência:
-//   1. create-thread-and-run: 3 chamadas HTTP → 1 (economiza ~500–700ms)
-//   2. polling adaptativo: 500ms (early) → 1000ms (late) (economiza ~avg 250ms)
-//   3. timing logs por etapa para diagnóstico em produção
+// Wave 5f — Responses API + SSE streaming:
+//   Elimina: thread lifecycle / polling / messages.list / create_thread_and_run.
+//   Substitui por: POST /v1/responses (stream:true ou stream:false).
+//   Modo streaming: retorna text/event-stream com eventos delta e done.
+//   Modo JSON (stream:false ou ausente): retorna JSON com reply (backward compat).
+//   PERSONA_INSTRUCTIONS inline substituem PERSONA_AGENTS (assistant IDs).
 //
-// Wave 5c-2 — otimizações de infra:
-//   4. initial_poll_delay_ms = 1500: espera 1.5s antes do primeiro poll.
-//      Racional: produção mostra primeira poll sempre "queued" (modelo não iniciou).
-//      Eliminar 2–3 polls wasted × ~150ms RTT = ~300–450ms economizados.
-//      Se o modelo completar em < 1.5s: impossível em produção (mínimo ~3s observado).
+// Waves 5c–5e mantidas: circuit breaker, retry, cost observability, material scope.
 //
-// Wave 5d — estabilidade institucional:
-//   5. Retry inteligente: max 2 retries para 429/5xx/network com backoff 500ms→1000ms.
-//      NÃO retry em 4xx cliente (prompt inválido, auth).
-//   6. Circuit breaker leve: in-memory por isolate, janela 60s, threshold 3 falhas.
-//      Após abertura: 30s de quarentena → resposta fallback institucional.
-//   7. Token & cost observability: log de prompt_tokens, completion_tokens,
-//      total_tokens, estimated_cost_usd, model — sem persistir conteúdo.
-//
-// Wave 5e-3 — persona-first material-bound:
-//   8. FORCE_AGENTS → PERSONA_AGENTS: instrutor_slug escolhe o assistant.
-//      Fallback = objetivo (Sgt. Ramos). Força deixa de ser chave de routing.
-//   9. MATERIAL_SCOPE por força: buildAdditionalInstructions envia força + material
-//      autorizado + escopo de acesso. Personalidade removida daqui (está no
-//      system prompt de cada assistant persona-based).
-//  10. Logs: persona_agent_selected, material_scope_selected, additional_instructions_size.
-//
-// Wave 5e-4 — perceived streaming:
-//  11. PERSONA_POLL_DELAY_MS: delay inicial adaptativo por persona.
-//      objetivo (respostas curtas ~59 tokens)   → 1100ms
-//      didatico (respostas médias ~246 tokens)  → 1200ms
-//      estrategico (respostas longas ~278 tokens) → 1500ms
-//      Fallback: INITIAL_POLL_DELAY_MS = 1500ms (comportamento anterior).
-//  12. Log: adaptive_poll_delay_selected com persona e delay escolhido.
+// INVARIANTES:
+//   - Nunca persistir conteúdo de mensagens
+//   - Nunca emitir eventos C5
+//   - HMAC validado antes de qualquer processamento
+//   - Circuit breaker protege contra cascata de falhas OpenAI
 
-const MAX_SKEW_SECONDS = 300;
-const OPENAI_API_BASE  = "https://api.openai.com/v1";
+const MAX_SKEW_SECONDS  = 300;
+const OPENAI_API_BASE   = "https://api.openai.com/v1";
+const RESPONSES_MODEL   = "gpt-4o";
+const MAX_OUTPUT_TOKENS = 1024;
 
-// Fallback institucional quando circuit breaker está aberto.
+// Resposta de fallback quando circuit breaker está aberto.
 const FALLBACK_REPLY =
   "Serviço de instrução temporariamente indisponível. " +
   "Aguarde alguns instantes e tente novamente.";
 
-// Wave 5e-3: routing por persona (instrutor_slug), não mais por força.
-// Cada assistant tem personalidade própria no system prompt.
-// IDs criados no OpenAI Playground — 2026-05-27.
-const PERSONA_AGENTS: Record<string, string> = {
-  objetivo:    "asst_KDgLZsKBaLmPCNnIe2IUo6rI",  // Sgt. Ramos  — direto, disciplinado
-  estrategico: "asst_aLRyptVWXluQI5k0xqYUzYZM",  // Sgt. Rocha  — analítico, estratégico
-  didatico:    "asst_b36NBDbNMqyphk8n7OqVxrUo",  // Sgt. Sara   — claro, educativo
+// Wave 5f: system prompts inline por persona (substituem PERSONA_AGENTS assistant IDs).
+// Cada persona define personalidade; força/material vêm de buildAdditionalInstructions,
+// que é appended ao campo instructions da Responses API.
+//
+// NOTA: conteúdo alinhado com personalidades dos assistants objetivo/estrategico/didatico.
+// Se os prompts precisarem ser ajustados, editar aqui e re-deployar chat-central.
+const PERSONA_INSTRUCTIONS: Record<string, string> = {
+  objetivo: [
+    "Você é o Sargento Ramos, instrutor institucional do Quartel Digital.",
+    "Personalidade: direto, disciplinado, objetivo. Respostas concisas e assertivas — sem rodeios.",
+    "Idioma: Português do Brasil. Tom: militar, formal.",
+    "Responda apenas sobre o material autorizado indicado em MATERIAL AUTORIZADO.",
+    "Para temas fora do material: oriente o recruta a verificar o regulamento correspondente.",
+  ].join("\n"),
+
+  estrategico: [
+    "Você é o Sargento Rocha, instrutor institucional do Quartel Digital.",
+    "Personalidade: analítico, estratégico, metódico. Visão sistêmica das normas e regulamentos.",
+    "Idioma: Português do Brasil. Tom: militar, formal.",
+    "Aprofunde contexto regulatório, implicações e consequências das normas quando pertinente.",
+    "Responda apenas sobre o material autorizado indicado em MATERIAL AUTORIZADO.",
+  ].join("\n"),
+
+  didatico: [
+    "Você é a Sargento Sara, instrutora institucional do Quartel Digital.",
+    "Personalidade: clara, educativa, paciente. Facilita o aprendizado progressivo do regulamento.",
+    "Idioma: Português do Brasil. Tom: militar, formal mas acessível.",
+    "Use exemplos concretos e estruture as respostas para facilitar a compreensão.",
+    "Responda apenas sobre o material autorizado indicado em MATERIAL AUTORIZADO.",
+  ].join("\n"),
 };
 
 // ── Circuit breaker (Wave 5d) ─────────────────────────────────────────────────
-// Estado in-memory por isolate Deno. Supabase reutiliza isolates entre requests
-// na mesma região — CB reduz pressão em cascata quando OpenAI degrada.
-// Soft circuit breaker: não persiste entre cold starts (sem Redis externo).
+// Estado in-memory por isolate Deno. Soft circuit breaker sem Redis externo.
 
-const CB_WINDOW_MS = 60_000; // janela rolling de 1 minuto
-const CB_THRESHOLD = 3;      // ≥3 falhas na janela → abrir circuito
-const CB_OPEN_MS   = 30_000; // manter aberto por 30s; após isso: half-open
-
+const CB_WINDOW_MS = 60_000;
+const CB_THRESHOLD = 3;
+const CB_OPEN_MS   = 30_000;
 const _cb = { failures: 0, windowStart: 0, openedAt: 0 };
 
 function cbIsOpen(request_id: string): boolean {
@@ -79,7 +81,6 @@ function cbIsOpen(request_id: string): boolean {
       });
       return true;
     }
-    // half-open: permite uma probe request; zera falhas
     console.log("[CHAT_CENTRAL_W1] circuit_breaker_half_open", {
       request_id, failures: _cb.failures,
     });
@@ -108,7 +109,7 @@ function cbRecordSuccess(): void {
 
 // ── Retry (Wave 5d) ───────────────────────────────────────────────────────────
 // Retryable: 429 rate limit, 5xx server error, network error (fetch throws).
-// NÃO retryable: 4xx (prompt inválido, auth, bad request).
+// NÃO retryable: 4xx cliente.
 
 const RETRY_MAX     = 2;
 const RETRY_BASE_MS = 500;
@@ -126,7 +127,7 @@ async function withOpenAIRetry<T>(
   let lastErr: unknown;
   for (let attempt = 0; attempt <= RETRY_MAX; attempt++) {
     if (attempt > 0) {
-      const delay_ms = RETRY_BASE_MS * (2 ** (attempt - 1)); // 500ms, 1000ms
+      const delay_ms = RETRY_BASE_MS * (2 ** (attempt - 1));
       console.warn("[CHAT_CENTRAL_W1] openai_retry", {
         request_id, label, attempt, delay_ms,
         status: (lastErr as any)?.openai_status ?? 0,
@@ -144,7 +145,7 @@ async function withOpenAIRetry<T>(
       return result;
     } catch (err) {
       lastErr = err;
-      if (!isRetryableOpenAIError(err)) throw err; // propagar imediatamente
+      if (!isRetryableOpenAIError(err)) throw err;
       cbRecordFailure(request_id);
     }
   }
@@ -152,8 +153,8 @@ async function withOpenAIRetry<T>(
 }
 
 // ── Token cost estimation (Wave 5d) ───────────────────────────────────────────
-// Preços USD por token (aproximados, maio 2025). Apenas para observabilidade —
-// não usar para faturamento. Fallback para gpt-4o quando modelo desconhecido.
+// Wave 5f: usa input_tokens/output_tokens (Responses API) em vez de
+// prompt_tokens/completion_tokens (Assistants API). Rates idênticos.
 
 const COST_RATES: Record<string, { input: number; output: number }> = {
   "gpt-4o":        { input: 2.50e-6, output: 10.00e-6 },
@@ -163,16 +164,14 @@ const COST_RATES: Record<string, { input: number; output: number }> = {
   "gpt-3.5-turbo": { input: 0.50e-6, output:  1.50e-6 },
 };
 
-function estimateCostUsd(model: string, promptTokens: number, completionTokens: number): number {
+function estimateCostUsd(model: string, inputTokens: number, outputTokens: number): number {
   const r = COST_RATES[model] ?? COST_RATES["gpt-4o"];
-  return promptTokens * r.input + completionTokens * r.output;
+  return inputTokens * r.input + outputTokens * r.output;
 }
 
 // ── Material scope por força (Wave 5e-3) ──────────────────────────────────────
-// Fonte canônica: migrations/20260129133000_implement_marinha_curriculum.sql
-// Marinha: currículo real com 10 módulos e ~58 aulas.
-// Exército / Aeronáutica: currículo ainda não desenvolvido — placeholder controlado.
-// Personalidade removida daqui: está no system prompt de cada assistant persona-based.
+// Marinha: currículo real (10 módulos, ~58 aulas).
+// Exército / Aeronáutica: placeholder controlado (currículo não desenvolvido).
 
 const MATERIAL_SCOPE: Record<string, { full: string; degustacao: string }> = {
   marinha: {
@@ -191,28 +190,19 @@ const MATERIAL_SCOPE: Record<string, { full: string; degustacao: string }> = {
     degustacao: "RDM: Fundamentos, Contravenção Disciplinar, Natureza das Contravenções",
   },
   exercito: {
-    // Currículo não desenvolvido — placeholder controlado (sem inventar)
     full:       "Regulamento Disciplinar do Exército (RDE) e material complementar do Exército Brasileiro",
     degustacao: "Introdução ao Regulamento Disciplinar do Exército (RDE)",
   },
   aeronautica: {
-    // Currículo não desenvolvido — placeholder controlado (sem inventar)
     full:       "Regulamento Disciplinar da Aeronáutica (RDA) e material complementar da Força Aérea Brasileira",
     degustacao: "Introdução ao Regulamento Disciplinar da Aeronáutica (RDA)",
   },
 };
 
-// Wave 5e-3: buildAdditionalInstructions
-// Envia: força ativa + material autorizado por força + escopo de acesso.
-// NÃO envia: personalidade (está no system prompt do assistant persona-based).
-function buildAdditionalInstructions(
-  forca: string,
-  access_mode: string,
-): string {
+function buildAdditionalInstructions(forca: string, access_mode: string): string {
   const scope = MATERIAL_SCOPE[forca] ?? MATERIAL_SCOPE.marinha;
   const isRestricted = access_mode === "restricted";
   const materialAtivo = isRestricted ? scope.degustacao : scope.full;
-
   return [
     `FORÇA ATIVA: ${forca.toUpperCase()}`,
     `MATERIAL AUTORIZADO: ${materialAtivo}`,
@@ -222,42 +212,50 @@ function buildAdditionalInstructions(
   ].join("\n");
 }
 
-// ── OpenAI fetch helpers ───────────────────────────────────────────────────────
+// ── Responses API — modo não-streaming ────────────────────────────────────────
 
-function makeOpenAIHeaders(apiKey: string): Record<string, string> {
+function makeResponsesHeaders(apiKey: string): Record<string, string> {
   return {
-    "Authorization":  `Bearer ${apiKey}`,
-    "Content-Type":   "application/json",
-    "OpenAI-Beta":    "assistants=v2",
+    "Authorization": `Bearer ${apiKey}`,
+    "Content-Type":  "application/json",
   };
 }
 
-async function openAIPost(
-  path: string,
+async function callResponsesAPI(
   apiKey: string,
-  body: unknown,
+  systemPrompt: string,
+  userInput: string,
   request_id: string,
-  label: string,
-): Promise<unknown> {
-  const url = `${OPENAI_API_BASE}${path}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: makeOpenAIHeaders(apiKey),
-    body: JSON.stringify(body),
+): Promise<{
+  text: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}> {
+  const res = await fetch(`${OPENAI_API_BASE}/responses`, {
+    method:  "POST",
+    headers: makeResponsesHeaders(apiKey),
+    body: JSON.stringify({
+      model:             RESPONSES_MODEL,
+      instructions:      systemPrompt,
+      input:             userInput,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
+      stream:            false,
+    }),
   });
 
-  const data = await res.json();
+  const data = await res.json() as any;
 
   if (!res.ok) {
-    console.error("[CHAT_CENTRAL_W1] openai_fetch_error", {
+    console.error("[CHAT_CENTRAL_W1] responses_api_error", {
       request_id,
-      label,
       http_status:   res.status,
       error_type:    data?.error?.type    ?? null,
       error_code:    data?.error?.code    ?? null,
       error_message: data?.error?.message ?? null,
     });
-    const err = new Error(`openai_fetch_failed:${label}:${res.status}`);
+    const err = new Error(`responses_api_failed:${res.status}`);
     (err as any).openai_status  = res.status;
     (err as any).openai_type    = data?.error?.type    ?? null;
     (err as any).openai_code    = data?.error?.code    ?? null;
@@ -265,199 +263,16 @@ async function openAIPost(
     throw err;
   }
 
-  return data;
-}
+  const text  = data.output?.[0]?.content?.[0]?.text ?? "Sem resposta disponível.";
+  const usage = data.usage ?? {};
 
-async function openAIGet(
-  path: string,
-  apiKey: string,
-  request_id: string,
-  label: string,
-): Promise<unknown> {
-  const url = `${OPENAI_API_BASE}${path}`;
-  const res = await fetch(url, {
-    method: "GET",
-    headers: makeOpenAIHeaders(apiKey),
-  });
-
-  const data = await res.json();
-
-  if (!res.ok) {
-    console.error("[CHAT_CENTRAL_W1] openai_fetch_error", {
-      request_id,
-      label,
-      http_status:   res.status,
-      error_type:    data?.error?.type    ?? null,
-      error_code:    data?.error?.code    ?? null,
-      error_message: data?.error?.message ?? null,
-    });
-    const err = new Error(`openai_fetch_failed:${label}:${res.status}`);
-    (err as any).openai_status  = res.status;
-    (err as any).openai_type    = data?.error?.type    ?? null;
-    (err as any).openai_code    = data?.error?.code    ?? null;
-    (err as any).openai_message = data?.error?.message ?? null;
-    throw err;
-  }
-
-  return data;
-}
-
-// ── Polling do run ─────────────────────────────────────────────────────────────
-//
-// Wave 5c: polling adaptativo — 500ms nos primeiros 8 attempts, depois 1000ms.
-// Racional: modelo OpenAI completa tipicamente em 3–8s. Polling a 500ms reduz
-// a janela de detecção de 0–1000ms para 0–500ms (economiza avg ~250ms).
-// Após 4s de espera (8 polls × 500ms) a resposta demora mais — sem ganho em
-// polling curto, então voltamos a 1000ms para não desperdiçar rate limit.
-//
-// Wave 5c-2: 1500ms de espera inicial antes do primeiro poll.
-// Produção mostra que o primeiro poll é sempre "queued" (modelo não iniciou).
-// Economiza 2–3 round-trips desnecessários (~300–450ms).
-
-// Wave 5c-2: fallback quando persona não reconhecida.
-const INITIAL_POLL_DELAY_MS = 1500;
-
-// Wave 5e-4: delay inicial por persona — baseado em dados de produção.
-// objetivo  (~59 tokens):  completa em ~2-3.5s → 1100ms (compromisso entre 800ms e 1500ms)
-// didatico  (~246 tokens): completa em ~3.5s → verificar em 1200ms
-// estrategico (~278 tokens): completa em ~4.5s → manter delay conservador (1500ms)
-const PERSONA_POLL_DELAY_MS: Record<string, number> = {
-  objetivo:    800,
-  didatico:    1200,
-  estrategico: 1500,
-};
-
-function pollIntervalMs(attempt: number): number {
-  return attempt < 8 ? 500 : 1000;
-}
-
-async function waitForRunReply(
-  apiKey: string,
-  threadId: string,
-  runId: string,
-  request_id: string,
-  started: number,
-  agentLabel?: string,
-  initialPollDelayMs: number = INITIAL_POLL_DELAY_MS,
-): Promise<string> {
-  const MAX_ATTEMPTS = 35; // 8×500ms + 27×1000ms = 31s max
-
-  // Wave 5e-4: delay adaptativo por persona (Wave 5c-2 original: 1500ms fixo).
-  // Log antes do wait para diagnóstico de eficácia por persona em produção.
-  console.log("[CHAT_CENTRAL_W1] adaptive_poll_delay_selected", {
-    request_id,
-    persona: agentLabel ?? "unknown",
-    delay_ms: initialPollDelayMs,
-    ms: Date.now() - started,
-  });
-  console.log("[CHAT_CENTRAL_W1] poll_wait_start", {
-    request_id,
-    delay_ms: initialPollDelayMs,
-    ms: Date.now() - started,
-  });
-  await new Promise((r) => setTimeout(r, initialPollDelayMs));
-  console.log("[CHAT_CENTRAL_W1] poll_wait_done", {
-    request_id,
-    ms: Date.now() - started,
-  });
-
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const t_poll_start = Date.now();
-
-    // Wave 5d: retry para 429/5xx/network — NÃO retry para 4xx (run inválido).
-    const run = await withOpenAIRetry(
-      () => openAIGet(
-        `/threads/${threadId}/runs/${runId}`,
-        apiKey,
-        request_id,
-        "runs.retrieve",
-      ),
-      "runs.retrieve",
-      request_id,
-    ) as {
-      status: string;
-      model?: string;
-      usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
-      last_error?: { code?: string; message?: string };
-    };
-
-    console.log("[CHAT_CENTRAL_W1] step_poll", {
-      request_id,
-      attempt,
-      run_status: run.status,
-      ms_poll: Date.now() - t_poll_start,
-      ms: Date.now() - started,
-    });
-
-    if (run.status === "completed") {
-      // Wave 5d: log de token usage e custo estimado por request.
-      if (run.usage && run.model) {
-        const cost = estimateCostUsd(run.model, run.usage.prompt_tokens, run.usage.completion_tokens);
-        console.log("[CHAT_CENTRAL_W1] token_usage", {
-          request_id,
-          model:               run.model,
-          force_agent:         agentLabel ?? "unknown",
-          prompt_tokens:       run.usage.prompt_tokens,
-          completion_tokens:   run.usage.completion_tokens,
-          total_tokens:        run.usage.total_tokens,
-          estimated_cost_usd:  parseFloat(cost.toFixed(6)),
-          ms:                  Date.now() - started,
-        });
-      }
-
-      const t_msgs_start = Date.now();
-      const msgs = await withOpenAIRetry(
-        () => openAIGet(
-          `/threads/${threadId}/messages?limit=1&order=desc`,
-          apiKey,
-          request_id,
-          "messages.list",
-        ),
-        "messages.list",
-        request_id,
-      ) as { data: Array<{ role: string; content: Array<{ type: string; text?: { value: string } }> }> };
-
-      console.log("[CHAT_CENTRAL_W1] step_messages_list", {
-        request_id,
-        ms_messages_list: Date.now() - t_msgs_start,
-        ms: Date.now() - started,
-      });
-
-      const last = msgs.data[0];
-      if (last?.role === "assistant" && last.content[0]?.type === "text") {
-        return last.content[0].text!.value;
-      }
-      return "Sem resposta disponível.";
-    }
-
-    if (
-      run.status === "failed" ||
-      run.status === "cancelled" ||
-      run.status === "expired"
-    ) {
-      const lastError = run.last_error ?? null;
-      console.error("[CHAT_CENTRAL_W1] openai_run_failed", {
-        request_id,
-        run_status: run.status,
-        run_id:     runId,
-        last_error_code:    lastError?.code    ?? null,
-        last_error_message: lastError?.message ?? null,
-        ms: Date.now() - started,
-      });
-      cbRecordFailure(request_id);
-      throw new Error(`run_ended:${run.status}:${lastError?.code ?? "unknown"}`);
-    }
-
-    await new Promise((r) => setTimeout(r, pollIntervalMs(attempt)));
-  }
-
-  console.error("[CHAT_CENTRAL_W1] openai_run_timeout", {
-    request_id,
-    run_id:   runId,
-    attempts: MAX_ATTEMPTS,
-    ms: Date.now() - started,
-  });
-  throw new Error("run_timeout");
+  return {
+    text,
+    model:         data.model ?? RESPONSES_MODEL,
+    input_tokens:  usage.input_tokens  ?? 0,
+    output_tokens: usage.output_tokens ?? 0,
+    total_tokens:  usage.total_tokens  ?? 0,
+  };
 }
 
 // ── HMAC helpers ──────────────────────────────────────────────────────────────
@@ -508,7 +323,8 @@ async function hmacSha256Hex(secret: string, message: string): Promise<string> {
 
 Deno.serve(async (req) => {
   const request_id = crypto.randomUUID();
-  const started = Date.now();
+  const started    = Date.now();
+  const encoder    = new TextEncoder();
 
   try {
     const secret = Deno.env.get("QD_HMAC_SECRET");
@@ -517,8 +333,7 @@ Deno.serve(async (req) => {
       return json(500, { ok: false, reason: "missing_secret", request_id });
     }
 
-    // ── [CHAT_CENTRAL_W1] start ───────────────────────────────────────────────
-    const timestamp = req.headers.get("x-qd-timestamp");
+    const timestamp       = req.headers.get("x-qd-timestamp");
     const signatureHeader = req.headers.get("x-qd-signature");
 
     console.log("[CHAT_CENTRAL_W1] start", {
@@ -537,7 +352,7 @@ Deno.serve(async (req) => {
       return json(401, { ok: false, reason: "bad_timestamp", request_id });
     }
 
-    const now = Math.floor(Date.now() / 1000);
+    const now  = Math.floor(Date.now() / 1000);
     const skew = Math.abs(now - ts);
     if (skew > MAX_SKEW_SECONDS) {
       console.warn("[CHAT_CENTRAL_W1] hmac_failed", {
@@ -548,24 +363,18 @@ Deno.serve(async (req) => {
 
     const prefix = "sha256=";
     if (!signatureHeader.startsWith(prefix)) {
-      console.warn("[CHAT_CENTRAL_W1] hmac_failed", {
-        request_id, reason: "bad_signature_format",
-      });
       return json(401, { ok: false, reason: "bad_signature_format", request_id });
     }
 
     const providedHex = signatureHeader.slice(prefix.length).trim().toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(providedHex)) {
-      console.warn("[CHAT_CENTRAL_W1] hmac_failed", {
-        request_id, reason: "bad_signature_hex", providedLen: providedHex.length,
-      });
       return json(401, { ok: false, reason: "bad_signature_hex", request_id });
     }
 
-    const rawBody = await req.text();
-    const base = `${ts}.${rawBody}`;
+    const rawBody     = await req.text();
+    const base        = `${ts}.${rawBody}`;
     const expectedHex = await hmacSha256Hex(secret, base);
-    const sigOk = timingSafeEqual(hexToBytes(expectedHex), hexToBytes(providedHex));
+    const sigOk       = timingSafeEqual(hexToBytes(expectedHex), hexToBytes(providedHex));
 
     if (!sigOk) {
       console.warn("[CHAT_CENTRAL_W1] hmac_failed", {
@@ -580,18 +389,18 @@ Deno.serve(async (req) => {
       return json(401, { ok: false, reason: "sig_mismatch", request_id });
     }
 
-    // ── [CHAT_CENTRAL_W1] hmac_ok ────────────────────────────────────────────
     console.log("[CHAT_CENTRAL_W1] hmac_ok", {
       request_id, ts, rawBodyLen: rawBody.length, ms: Date.now() - started,
     });
 
     let payload: {
-      recruta_id:    string;
+      recruta_id:     string;
       instrutor_slug: string;
-      forca:         string;
-      access_mode:   string;
-      user_text:     string;
-      session_id:    string;
+      forca:          string;
+      access_mode:    string;
+      user_text:      string;
+      session_id:     string;
+      stream?:        boolean;
     };
 
     try {
@@ -601,6 +410,7 @@ Deno.serve(async (req) => {
     }
 
     const { instrutor_slug, forca, access_mode, user_text, recruta_id } = payload;
+    const streamMode = payload.stream === true;
 
     if (!user_text || !instrutor_slug || !forca || !recruta_id) {
       return json(400, { ok: false, reason: "missing_fields", request_id });
@@ -612,122 +422,263 @@ Deno.serve(async (req) => {
       return json(500, { ok: false, reason: "missing_openai_key", request_id });
     }
 
-    // Wave 5e-3: routing por persona (instrutor_slug), não mais por força.
+    // Wave 5f: routing por persona → PERSONA_INSTRUCTIONS (inline system prompt).
     // Fallback = 'objetivo' (Sgt. Ramos) se slug inválido ou ausente.
-    const agentId = PERSONA_AGENTS[instrutor_slug] ?? PERSONA_AGENTS.objetivo;
-    const agentLabel = instrutor_slug in PERSONA_AGENTS ? instrutor_slug : "objetivo";
-
-    // Material-bound: força define o contexto documental, não o assistant.
-    const additionalInstructions = buildAdditionalInstructions(forca, access_mode);
+    const agentLabel   = instrutor_slug in PERSONA_INSTRUCTIONS ? instrutor_slug : "objetivo";
+    const personaInst  = PERSONA_INSTRUCTIONS[agentLabel];
+    const materialCtx  = buildAdditionalInstructions(forca, access_mode);
+    const systemPrompt = `${personaInst}\n\n${materialCtx}`;
     const correlation_id = crypto.randomUUID();
 
     console.log("[CHAT_CENTRAL_W1] persona_agent_selected", {
       request_id,
       instrutor_slug,
       agent_label:   agentLabel,
-      agent_id:      agentId.slice(0, 20),   // prefix seguro para log
-      used_fallback: !(instrutor_slug in PERSONA_AGENTS),
+      used_fallback: !(instrutor_slug in PERSONA_INSTRUCTIONS),
+      stream_mode:   streamMode,
     });
 
     console.log("[CHAT_CENTRAL_W1] material_scope_selected", {
       request_id,
       forca,
       access_mode,
-      scope_type:     access_mode === "restricted" ? "degustacao" : "full",
-      scope_is_real:  forca === "marinha",   // marinha tem currículo real; outros placeholder
-      additional_instructions_size: additionalInstructions.length,
+      scope_type:        access_mode === "restricted" ? "degustacao" : "full",
+      scope_is_real:     forca === "marinha",
+      system_prompt_size: systemPrompt.length,
     });
 
-    // ── Wave 5d: circuit breaker check ───────────────────────────────────────
-    // Se o circuito estiver aberto (OpenAI degradado), retornar fallback imediato
-    // sem saturar a fila de retries. Estado reset após CB_OPEN_MS (30s).
+    // ── Circuit breaker check ─────────────────────────────────────────────────
     if (cbIsOpen(request_id)) {
       console.warn("[CHAT_CENTRAL_W1] circuit_breaker_fallback", {
         request_id, correlation_id, forca, ms: Date.now() - started,
       });
+      if (streamMode) {
+        // Fallback em modo streaming: emitir done com resposta de degradação
+        const fallbackStream = new ReadableStream({
+          start(ctrl) {
+            ctrl.enqueue(encoder.encode(
+              `data: ${JSON.stringify({
+                type:         "done",
+                text:         FALLBACK_REPLY,
+                usage:        null,
+                correlation_id,
+                request_id,
+                degraded:     true,
+              })}\n\n`
+            ));
+            ctrl.close();
+          },
+        });
+        return new Response(fallbackStream, {
+          status:  200,
+          headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
+        });
+      }
       return json(200, {
-        ok: true,
-        reply: FALLBACK_REPLY,
-        degraded: true,
-        correlation_id,
-        request_id,
-        ms: Date.now() - started,
+        ok: true, reply: FALLBACK_REPLY, degraded: true,
+        correlation_id, request_id, ms: Date.now() - started,
       });
     }
 
-    // ── [CHAT_CENTRAL_W1] openai_start ───────────────────────────────────────
     console.log("[CHAT_CENTRAL_W1] openai_start", {
-      request_id,
-      correlation_id,
-      instrutor_slug,
-      forca,
-      access_mode,
+      request_id, correlation_id, instrutor_slug: agentLabel,
+      forca, access_mode, stream_mode: streamMode,
       ms: Date.now() - started,
     });
 
-    // Wave 5c: create-thread-and-run em UMA única chamada HTTP.
-    // Antes: POST /threads + POST /threads/:id/messages + POST /threads/:id/runs = 3 calls (~500–700ms).
-    // Agora: POST /threads/runs com thread embutido = 1 call (~200–350ms).
-    // Ref: https://platform.openai.com/docs/api-reference/runs/createThreadAndRun
-    //
-    // Wave 5d: wrapped em withOpenAIRetry para 429/5xx/network (max 2 retries).
-    const t_create = Date.now();
-    const threadAndRun = await withOpenAIRetry(
-      () => openAIPost(
-        "/threads/runs",
-        openaiKey,
-        {
-          assistant_id:            agentId,
-          additional_instructions: additionalInstructions,
-          thread: {
-            messages: [{ role: "user", content: user_text }],
-          },
+    // ── Modo streaming (Wave 5f) ──────────────────────────────────────────────
+    // Chama POST /v1/responses com stream:true.
+    // Parseia eventos SSE do OpenAI e re-emite como formato simplificado:
+    //   delta: {"type":"delta","delta":"texto parcial"}
+    //   done:  {"type":"done","text":"texto completo","usage":{...},...}
+    //   error: {"type":"error","reason":"..."}
+    if (streamMode) {
+      let oaiRes: Response;
+      try {
+        // Retry na chamada inicial (429/5xx/network). Não retry mid-stream.
+        oaiRes = await withOpenAIRetry(
+          () => fetch(`${OPENAI_API_BASE}/responses`, {
+            method:  "POST",
+            headers: makeResponsesHeaders(openaiKey),
+            body: JSON.stringify({
+              model:             RESPONSES_MODEL,
+              instructions:      systemPrompt,
+              input:             user_text,
+              max_output_tokens: MAX_OUTPUT_TOKENS,
+              stream:            true,
+            }),
+          }).then(async (res) => {
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({})) as any;
+              const err = new Error(`responses_stream_failed:${res.status}`);
+              (err as any).openai_status  = res.status;
+              (err as any).openai_type    = errData?.error?.type    ?? null;
+              (err as any).openai_code    = errData?.error?.code    ?? null;
+              (err as any).openai_message = errData?.error?.message ?? null;
+              throw err;
+            }
+            return res;
+          }),
+          "responses.stream",
+          request_id,
+        );
+      } catch (streamInitErr) {
+        cbRecordFailure(request_id);
+        console.error("[CHAT_CENTRAL_W1] responses_stream_init_failed", {
+          request_id, err: String(streamInitErr),
+          openai_status: (streamInitErr as any)?.openai_status ?? null,
+          ms: Date.now() - started,
+        });
+        return json(502, { ok: false, reason: "openai_stream_unavailable", request_id });
+      }
+
+      const oaiReader = oaiRes.body!.getReader();
+      const decoder   = new TextDecoder();
+      let   sseBuffer  = "";
+      let   fullText   = "";
+      let   streamDone = false;
+
+      const responseStream = new ReadableStream({
+        async start(ctrl) {
+          try {
+            outer: while (true) {
+              const { done, value } = await oaiReader.read();
+              if (done) break;
+
+              sseBuffer += decoder.decode(value, { stream: true });
+              const events = sseBuffer.split("\n\n");
+              sseBuffer = events.pop() ?? "";
+
+              for (const rawEvent of events) {
+                if (!rawEvent.trim()) continue;
+
+                let eventName = "";
+                let dataLine  = "";
+                for (const line of rawEvent.split("\n")) {
+                  if (line.startsWith("event: ")) eventName = line.slice(7).trim();
+                  if (line.startsWith("data: "))  dataLine  = line.slice(6).trim();
+                }
+                if (!dataLine || dataLine === "[DONE]") continue;
+
+                try {
+                  const parsed = JSON.parse(dataLine) as any;
+                  const evType = parsed.type ?? eventName;
+
+                  if (evType === "response.output_text.delta") {
+                    const delta = parsed.delta ?? "";
+                    if (delta) {
+                      fullText += delta;
+                      ctrl.enqueue(encoder.encode(
+                        `data: ${JSON.stringify({ type: "delta", delta })}\n\n`
+                      ));
+                    }
+
+                  } else if (evType === "response.completed") {
+                    const usage     = parsed.response?.usage ?? null;
+                    const finalText = parsed.response?.output?.[0]?.content?.[0]?.text ?? fullText;
+                    const model     = parsed.response?.model ?? RESPONSES_MODEL;
+
+                    if (usage) {
+                      const cost = estimateCostUsd(
+                        model, usage.input_tokens ?? 0, usage.output_tokens ?? 0,
+                      );
+                      console.log("[CHAT_CENTRAL_W1] token_usage", {
+                        request_id, model, force_agent: agentLabel,
+                        input_tokens:       usage.input_tokens  ?? 0,
+                        output_tokens:      usage.output_tokens ?? 0,
+                        total_tokens:       usage.total_tokens  ?? 0,
+                        estimated_cost_usd: parseFloat(cost.toFixed(6)),
+                        stream_mode:        true,
+                        ms:                 Date.now() - started,
+                      });
+                    }
+
+                    console.log("[CHAT_CENTRAL_W1] openai_success", {
+                      request_id, correlation_id, replyLen: finalText.length,
+                      stream_mode: true, ms: Date.now() - started,
+                    });
+
+                    ctrl.enqueue(encoder.encode(
+                      `data: ${JSON.stringify({
+                        type: "done",
+                        text: finalText,
+                        usage,
+                        correlation_id,
+                        request_id,
+                      })}\n\n`
+                    ));
+                    streamDone = true;
+                    cbRecordSuccess();
+                    break outer;
+                  }
+                } catch {
+                  // skip malformed SSE event
+                }
+              }
+            }
+
+            // EOF sem evento done (resposta truncada pela OpenAI)
+            if (!streamDone && fullText) {
+              ctrl.enqueue(encoder.encode(
+                `data: ${JSON.stringify({
+                  type:         "done",
+                  text:         fullText,
+                  usage:        null,
+                  correlation_id,
+                  request_id,
+                  truncated:    true,
+                })}\n\n`
+              ));
+              cbRecordSuccess();
+            }
+          } catch (streamErr) {
+            cbRecordFailure(request_id);
+            console.error("[CHAT_CENTRAL_W1] streaming_read_error", {
+              request_id, err: String(streamErr), ms: Date.now() - started,
+            });
+            ctrl.enqueue(encoder.encode(
+              `data: ${JSON.stringify({ type: "error", reason: "streaming_failed", request_id })}\n\n`
+            ));
+          } finally {
+            ctrl.close();
+          }
         },
-        request_id,
-        "threads.create_and_run",
-      ),
-      "threads.create_and_run",
-      request_id,
-    ) as { id: string; thread_id: string };
+      });
 
-    console.log("[CHAT_CENTRAL_W1] step_create_thread_and_run", {
-      request_id,
-      thread_id: threadAndRun.thread_id,
-      run_id:    threadAndRun.id,
-      ms_create: Date.now() - t_create,
-      ms:        Date.now() - started,
-    });
+      return new Response(responseStream, {
+        status:  200,
+        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
+      });
+    }
 
-    // Aguardar conclusão do run e recuperar resposta.
-    // Wave 5e-3: agentLabel = instrutor_slug (persona) para token_usage log.
-    // Wave 5e-4: delay adaptativo por persona (objetivo < didatico < estrategico).
-    const personaPollDelay = PERSONA_POLL_DELAY_MS[agentLabel] ?? INITIAL_POLL_DELAY_MS;
-    const reply = await waitForRunReply(
-      openaiKey,
-      threadAndRun.thread_id,
-      threadAndRun.id,
+    // ── Modo JSON — stream:false ou ausente (backward compat) ─────────────────
+    const t_openai = Date.now();
+    const result = await withOpenAIRetry(
+      () => callResponsesAPI(openaiKey, systemPrompt, user_text, request_id),
+      "responses.create",
       request_id,
-      started,
-      agentLabel,
-      personaPollDelay,
     );
 
-    // Wave 5d: sucesso → reset circuit breaker
     cbRecordSuccess();
 
-    // ── [CHAT_CENTRAL_W1] openai_success ─────────────────────────────────────
+    const cost = estimateCostUsd(result.model, result.input_tokens, result.output_tokens);
+    console.log("[CHAT_CENTRAL_W1] token_usage", {
+      request_id, model: result.model, force_agent: agentLabel,
+      input_tokens:       result.input_tokens,
+      output_tokens:      result.output_tokens,
+      total_tokens:       result.total_tokens,
+      estimated_cost_usd: parseFloat(cost.toFixed(6)),
+      stream_mode:        false,
+      ms:                 Date.now() - started,
+    });
+
     console.log("[CHAT_CENTRAL_W1] openai_success", {
-      request_id,
-      correlation_id,
-      replyLen: reply.length,
-      ms:       Date.now() - started,
+      request_id, correlation_id, replyLen: result.text.length,
+      ms_openai: Date.now() - t_openai, ms: Date.now() - started,
     });
 
     return json(200, {
-      ok: true,
-      reply,
-      correlation_id,
-      request_id,
+      ok: true, reply: result.text, correlation_id, request_id,
       ms: Date.now() - started,
     });
 
@@ -735,19 +686,15 @@ Deno.serve(async (req) => {
     const errStr = String(err);
     let reason = "internal_error";
     let isOpenAIFailure = false;
-    if (errStr.includes("run_ended:"))           { reason = errStr.replace("Error: ", "").split(":").slice(0, 2).join(":"); isOpenAIFailure = true; }
-    else if (errStr.includes("run_timeout"))     { reason = "openai_run_timeout"; isOpenAIFailure = true; }
-    else if (errStr.includes("openai_fetch_failed")) { reason = "openai_error"; isOpenAIFailure = true; }
-    else if (errStr.toLowerCase().includes("openai")) { reason = "openai_error"; isOpenAIFailure = true; }
-
-    // Wave 5d: falhas OpenAI não capturadas pelo retry também contam no CB
-    // (ex: run_timeout após MAX_ATTEMPTS, run_ended:failed)
+    if (errStr.includes("responses_api_failed") || errStr.includes("responses_stream_failed")) {
+      reason = "openai_error"; isOpenAIFailure = true;
+    } else if (errStr.toLowerCase().includes("openai")) {
+      reason = "openai_error"; isOpenAIFailure = true;
+    }
     if (isOpenAIFailure) cbRecordFailure(request_id);
 
     console.error("[CHAT_CENTRAL_W1] exception", {
-      request_id,
-      reason,
-      err:                errStr,
+      request_id, reason, err: errStr,
       openai_http_status: (err as any)?.openai_status  ?? null,
       openai_error_type:  (err as any)?.openai_type    ?? null,
       openai_error_code:  (err as any)?.openai_code    ?? null,

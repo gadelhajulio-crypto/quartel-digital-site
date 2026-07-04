@@ -20,6 +20,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNetworkGuard } from '../hooks/useNetworkGuard';
 import {
   sendMessageW1,
+  streamMessageW1,
   openConversationRpc,
   loadMensagens,
   markReadRpc,
@@ -170,6 +171,56 @@ function InstrutorMessage({
             </TouchableOpacity>
           )}
         </View>
+      </View>
+    </View>
+  );
+}
+
+// ── PartialInstrutorMessage (Wave 5f) — exibe tokens SSE em tempo real ─────────
+// Aparece enquanto streamingText !== null e tem conteúdo.
+// Substituída pela mensagem do DB quando done event chega e fetchMensagens retorna.
+
+function PartialInstrutorMessage({
+  text,
+  instructorName,
+  glowColor,
+}: {
+  text: string;
+  instructorName: string;
+  glowColor: string;
+}) {
+  const cursorOpacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(cursorOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+        Animated.timing(cursorOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [cursorOpacity]);
+
+  return (
+    <View style={msgStyles.instrutorRow}>
+      <View
+        style={[
+          msgStyles.instrutorBubble,
+          {
+            backgroundColor: tatico.colors.card,
+            borderColor:     tatico.colors.border,
+            borderLeftColor: glowColor,
+          },
+        ]}
+      >
+        <Text style={[typographyPresets.label, { color: glowColor, marginBottom: 4 }]}>
+          {instructorName}
+        </Text>
+        <Text style={[typographyPresets.body, { color: tatico.colors.text }]}>
+          {text}
+          <Animated.Text style={{ opacity: cursorOpacity }}>▌</Animated.Text>
+        </Text>
       </View>
     </View>
   );
@@ -372,6 +423,9 @@ export default function ChatScreen() {
 
   // Wave 5e-4: timestamp do início do envio para medir perceived_wait_ms.
   const sendStartedAtRef = useRef<number>(0);
+
+  // Wave 5f: texto parcial recebido via SSE (null = sem streaming ativo)
+  const [streamingText, setStreamingText] = useState<string | null>(null);
 
   // Retry: mantém o client_message_id da última tentativa falha
   const pendingRetry = useRef<{ text: string; client_message_id: string } | null>(null);
@@ -621,6 +675,69 @@ export default function ChatScreen() {
       };
 
       try {
+        // Wave 5f: tentar SSE streaming primeiro.
+        // Se indisponível (Hermes sem ReadableStream) ou falhar: fallback para polling.
+        let streamOk = false;
+        let cid_stream: string | undefined;
+
+        try {
+          const gen = streamMessageW1(payload);
+          let accumulated = '';
+          let firstDelta  = true;
+
+          for await (const ev of gen) {
+            if (ev.type === 'delta') {
+              if (firstDelta) {
+                firstDelta = false;
+                logChatEvent('stream_delta_received', { instrutor_codigo: instructorSlug });
+              }
+              accumulated += ev.delta;
+              setStreamingText(accumulated);
+            } else if (ev.type === 'done') {
+              cid_stream = ev.conversa_id;
+              streamOk   = true;
+              break;
+            } else if (ev.type === 'error') {
+              if (ev.reason !== 'stream_unavailable' && ev.reason !== 'empty_message') {
+                logChatEvent('stream_fallback', { instrutor_codigo: instructorSlug });
+              }
+              break; // fall through to polling
+            }
+          }
+        } catch {
+          logChatEvent('stream_fallback', { instrutor_codigo: instructorSlug });
+        }
+        setStreamingText(null);
+
+        if (streamOk) {
+          // Sucesso via streaming: recarregar do DB (persist já concluído no servidor)
+          const cid = cid_stream ?? conversaId ?? null;
+          if (cid) {
+            if (cid_stream && !conversaId) setConversaId(cid_stream);
+            logChatEvent(
+              existingClientMessageId ? 'message_retry_succeeded' : 'message_send_succeeded',
+              {
+                instrutor_codigo:   instructorSlug,
+                conversa_id_prefix: conversaPrefix(cid),
+              },
+            );
+            try { await fetchMensagens(cid); } catch { /* falha silenciosa — stream OK */ }
+            const perceived_wait_ms = Date.now() - sendStartedAtRef.current;
+            const phase_reached     = Math.min(
+              Math.floor(perceived_wait_ms / 2000),
+              PROCESSING_PHASES.length - 1,
+            );
+            logChatEvent('streaming_completed', {
+              instrutor_codigo: instructorSlug, perceived_wait_ms, phase_reached,
+            });
+            logChatEvent('unread_cleared', { instrutor_codigo: instructorSlug });
+            await tryMarkRead(cid);
+          }
+          pendingRetry.current = null;
+          return; // pula o fallback polling abaixo
+        }
+
+        // Fallback: polling via sendMessageW1 (comportamento anterior a Wave 5f)
         const result = await sendMessageW1(payload);
 
         // Se a conversa foi criada neste envio, guardar o conversa_id
@@ -629,29 +746,23 @@ export default function ChatScreen() {
           setConversaId(result.conversa_id);
         }
 
-        // Recarregar mensagens do DB (inclui o par user+assistant persistido)
-        // tryMarkRead após fetchMensagens: zera unread_count no banco após leitura.
-        // Garante que o badge do BottomBar reflita "lido" sem realtime.
         if (cid) {
           logChatEvent(
             existingClientMessageId ? 'message_retry_succeeded' : 'message_send_succeeded',
             {
-              instrutor_codigo: instructorSlug,
+              instrutor_codigo:   instructorSlug,
               conversa_id_prefix: conversaPrefix(cid),
-              correlation_id: result.correlation_id,
+              correlation_id:     result.correlation_id,
             },
           );
           await fetchMensagens(cid);
-          // Wave 5e-4: medir perceived_wait_ms (send button → mensagem visível na lista).
           const perceived_wait_ms = Date.now() - sendStartedAtRef.current;
-          const phase_reached = Math.min(
+          const phase_reached     = Math.min(
             Math.floor(perceived_wait_ms / 2000),
             PROCESSING_PHASES.length - 1,
           );
           logChatEvent('streaming_completed', {
-            instrutor_codigo: instructorSlug,
-            perceived_wait_ms,
-            phase_reached,
+            instrutor_codigo: instructorSlug, perceived_wait_ms, phase_reached,
           });
           logChatEvent('unread_cleared', { instrutor_codigo: instructorSlug });
           await tryMarkRead(cid);
@@ -659,17 +770,15 @@ export default function ChatScreen() {
           // Persistência parcial: mostrar resposta mas marcar como não persistida
           setLocalMessages((prev) =>
             prev.map((lm) =>
-              lm.client_message_id === clientMsgId
-                ? { ...lm, status: 'failed' }
-                : lm,
+              lm.client_message_id === clientMsgId ? { ...lm, status: 'failed' } : lm,
             ),
           );
           const assistantLocal: LocalMessage = {
-            localId: `assistant-${clientMsgId}`,
-            text: result.assistant_text,
+            localId:           `assistant-${clientMsgId}`,
+            text:              result.assistant_text,
             client_message_id: `assistant-${clientMsgId}`,
-            status: 'failed',
-            timestamp: new Date(),
+            status:            'failed',
+            timestamp:         new Date(),
           };
           setLocalMessages((prev) => [...prev, assistantLocal]);
         }
@@ -953,11 +1062,20 @@ export default function ChatScreen() {
           />
         )}
 
-        {isSending && (
+        {/* Wave 5f: PartialInstrutorMessage substitui ProcessingIndicator ao receber tokens */}
+        {streamingText ? (
+          <View style={styles.processingWrapper}>
+            <PartialInstrutorMessage
+              text={streamingText}
+              instructorName={instructorName}
+              glowColor={glowColor}
+            />
+          </View>
+        ) : isSending ? (
           <View style={styles.processingWrapper}>
             <ProcessingIndicator glowColor={glowColor} />
           </View>
-        )}
+        ) : null}
 
         {/* Indicador de rascunho recuperado — discreto, desaparece ao digitar */}
         {showDraftHint && (
