@@ -200,6 +200,17 @@ Descoberto ao validar o A-16 (2026-07-04): o módulo **`[QA] Módulo Teste rpc_c
 
 Deltas reais (local errado → remoto real): `conteudos.conteudo`→`corpo_markdown`(+tipo/versao/origem/metadata); `flashcards.frente/verso`→`pergunta/resposta`; `quiz_perguntas.pergunta`→`enunciado`; `quiz_alternativas.is_correta`→`correta`; `quiz_tentativas.pontuacao/respostas_jsonb/sucesso`→`respostas/total_perguntas/total_acertos/percentual/finalizada`; função `c9_update_updated_at_column`→`c9_set_updated_at`. Introspecção via `supabase/remote/supabase_remote_schema.sql`. Base para o design de quiz/simulado (ver `docs/DESIGN_QUIZ_SIMULADO.md`).
 
+### A-19 — `aulas` nega SELECT a `authenticated` · confirmado, SEM impacto vivo (provável intencional)
+Descoberto ao ler `aulas.xp_valor` (2026-07-04): `aulas` só concede a `service_role` (sem `authenticated`) — mesmo padrão de GRANT ausente do A-15. **Mas, ao contrário do A-15, não há consumidor vivo afetado:** nenhum código faz `.from('aulas')` direto; o app lê lições via views (`v_lessons_panel` etc.) e escreve via RPCs `SECURITY DEFINER` (`rpc_complete_lesson` lê `aulas.xp_valor` como definer, contornando o grant). Provavelmente **intencional** — tabela-base acessada só via views canônicas (defesa em profundidade). **Sem correção necessária** (só flagрado; se um dia algo precisar ler `aulas` direto, aí adiciona o grant). Verificação read-only feita antes de qualquer ação, conforme protocolo.
+
+### A-20 — Sistema de simulado "fantasma": RPCs órfãs + tabelas inexistentes + 3 ledgers de XP
+Investigação (2026-07-04) da pista `conceder_xp_simulado(p_simulado_id)`. Conclusão: **não existe sistema de simulado** — só fragmentos órfãos/aspiracionais:
+- **`conceder_xp_simulado`** — RPC não referenciada pelo app; `p_simulado_id` é **texto livre** (sem FK/tabela). Grava num subsistema de XP **legado** (`xp_events` user_id/xp/periodo/reference + `user_xp`), **distinto** do `xp_eventos` canônico usado por `rpc_complete_lesson`. Aspiracional (plumbing de XP sem feature). Perfil de morto/histórico como o `chat-ai` do A-2.
+- **`c6_get_simulado_final_score`** — referencia `simulados_resultados` / `v_simulado_final_ciclo` que **nunca existiram** (só via `to_regclass` defensivo) → sempre retorna NULL; o gate de "simulado final" da elegibilidade C6 nunca passa.
+- **Três tabelas de XP divergentes**: `xp_eventos` (canônico, `rpc_complete_lesson`), `xp_events` (legado, `conceder_xp_simulado`), `user_xp`. Parente da divergência de XP já conhecida (MEMORY / A-1).
+
+**Consequências:** (1) o design de simulado first-class sobre C9 **permanece válido** (não há sistema melhor a reaproveitar); (2) reusar `conceder_xp_simulado` está **descartado** (subsistema legado); (3) **pré-requisito aberto**: identificar qual ledger de XP o ranking lê, antes de escrever XP novo de quiz/simulado — senão o XP não conta no ranking. Ver `docs/DESIGN_QUIZ_SIMULADO.md` §3/§8. Limpeza dos fragmentos órfãos = candidato a achado de código morto futuro (não removido agora).
+
 ### A-5 — `catch` silenciosos
 Varredura em `src/` encontrou **catch verdadeiramente vazios apenas em `chatService.ts:357` e `:359`**, e ambos são **intencionais e defensáveis** (tentativa best-effort de extrair o body de erro da Edge Function antes de logar `message_send_failed` — o log ocorre logo depois; não há falha engolida sem telemetria). **Sem falha silenciosa crítica identificada** no caminho de chat. Demais `catch` (30 no total) logam ou propagam. Não auditados exaustivamente fora do fluxo de chat.
 

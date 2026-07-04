@@ -41,12 +41,15 @@ Valores existentes hoje:
 | **Quiz de lição** | 0 | ≥90%→20 · ≥80%→12 · ≥70%→6 | **20** | 1ª tentativa/quiz/recruta |
 | **Simulado de módulo** | 40 | ≥90%→60 · ≥80%→40 · ≥70%→20 | **100** | 1ª tentativa/simulado/recruta |
 
-Racional: quiz (≤20) < lição (~50) < simulado (≤100). O simulado **reusa a escala** do `conceder_xp_simulado` já existente (coerência). Quiz é ~⅓, para não desvalorizar o conteúdo.
+Racional: quiz (≤20) < lição (~50) < simulado (≤100). Os **valores** (base 40 + 20/40/60) e o **cap diário de 200 XP** vêm do `conceder_xp_simulado` — mas **só os valores**, não o encanamento (ver ⚠️ abaixo). Quiz é ~⅓, para não desvalorizar o conteúdo.
+
+> ⚠️ **Correção pós-A-20:** `conceder_xp_simulado` **NÃO deve ser reaproveitada** — ela é uma RPC órfã que grava num subsistema de XP **legado** (`xp_events`/`user_xp`), distinto do `xp_eventos` canônico do `rpc_complete_lesson`. Reusá-la gravaria XP na ledger errada. O RPC novo deve escrever no **mesmo ledger que o `rpc_complete_lesson`** para consistência.
 
 **Grant via RPC único** `rpc_c9_submit_attempt(p_quiz_id, p_respostas jsonb)` `SECURITY DEFINER`:
 1. Avalia acertos **server-side** (gabarito nunca sai do banco).
 2. Insere `c9_aula_quiz_tentativas` (respostas, total_perguntas, total_acertos, percentual).
-3. **XP só na 1ª tentativa** daquele `quiz_id`+recruta: `IF NOT EXISTS (SELECT 1 FROM c9_aula_quiz_tentativas WHERE quiz_id=? AND recruta_id=auth.uid())` **antes** de inserir a tentativa → concede; senão registra a tentativa sem XP. Grava XP no ledger canônico (`xp_eventos`/`xp_events`) com `tipo` = `quiz_aula_concluido` / `simulado_modulo_concluido` e `referencia`=quiz_id (rastreável, sem farm).
+3. **XP só na 1ª tentativa** daquele `quiz_id`+recruta: `IF NOT EXISTS (SELECT 1 FROM c9_aula_quiz_tentativas WHERE quiz_id=? AND recruta_id=auth.uid())` **antes** de inserir a tentativa → concede; senão registra a tentativa sem XP.
+4. **PRÉ-REQUISITO ABERTO (A-20):** existem **3 tabelas de XP** (`xp_eventos` canônico, `xp_events` legado, `user_xp`). Antes de escrever este RPC é obrigatório **confirmar qual ledger o ranking realmente lê** (views `v_ranking_mensal_rcc`/`mv_ranking_mensal`) — senão o XP de quiz/simulado não conta no ranking, anulando o propósito. O RPC grava nessa ledger, com `tipo` = `quiz_aula_concluido`/`simulado_modulo_concluido` e referência = quiz_id (rastreável, sem farm), respeitando cap diário.
 
 ## 4. Placeholder de módulos/lições — Exército & Aeronáutica
 Espelhar a estrutura Marinha (10 módulos reais), nomes adaptados por força. Densidade proposta (**recomendada**): **10 módulos × 5 lições = 50 lições/força**. Todos `is_placeholder=true`, `ativo=true`, `is_degustacao=false` (exceto 1 módulo degustação/força, espelhando Marinha). Lições placeholder com `xp_valor=0` (não dão XP até virarem reais).
@@ -79,8 +82,9 @@ Fórmula p/ recalibrar: `perguntas = lições×Q_lição + módulos×Q_simulado`
 ## 8. O que falta decidir / confirmar antes de implementar
 1. **Densidade** (seção 4/6): recomendada (~3 310 linhas) vs leve (~1 500)? Quantos módulos/lições por força de Exército/Aeronáutica?
 2. **`xp_valor` real das lições** Marinha (não lido — `aulas` RLS). Confirmar se o anchor de 50 procede ou se varia por lição.
-3. **Reaproveitar `conceder_xp_simulado`** (que usa `xp_events`+`p_simulado_id text`) ou criar o `rpc_c9_submit_attempt` novo unificado (recomendado, pois integra tentativa+avaliação+XP no modelo C9)?
-4. Nomes/estrutura dos módulos placeholder de Ex/Aero (espelhar Marinha 1:1 ou lista adaptada?).
+3. ~~Reaproveitar `conceder_xp_simulado`~~ → **RESOLVIDO (A-20): NÃO reaproveitar** (subsistema de XP legado). Criar `rpc_c9_submit_attempt` novo, escrevendo na ledger canônica.
+4. **CRÍTICO (A-20):** qual das 3 tabelas de XP (`xp_eventos`/`xp_events`/`user_xp`) o **ranking** lê? O RPC de XP novo tem que gravar nessa. Introspecção das views de ranking pendente — **bloqueia o RPC de XP** (mas não a migration de schema nem o seed).
+5. Nomes/estrutura dos módulos placeholder de Ex/Aero (espelhar Marinha 1:1 ou lista adaptada?).
 
 ## 9. Ordem de implementação proposta (pós-aprovação)
 1. Migration: `is_placeholder` nas 4 tabelas + alterações de simulado first-class em `c9_aula_quizzes` (+índice) — **versionada**.
