@@ -154,6 +154,22 @@ O `_lib` era importado por **apenas 2 arquivos**, ambos **código morto/órfão*
 ### A-14 — (NOVO, não resolvido) Possível duplicação de lógica de seleção de instrutor
 Após remover o Grupo 2, restam **dois pickers de instrutor vivos**: `app/(onboarding)/instrutor.tsx` (passo do onboarding) e `app/(stack)/instructor/select.tsx` (trocar instrutor depois). Podem compartilhar lógica duplicada de listagem/seleção. **Fora do escopo do A-4** (que era o grupo de rotas duplicado) — anotado para investigação futura de consolidação de componente. Não é bug ativo; é oportunidade de DRY.
 
+### A-15 — (NOVO) Views sem `GRANT` a `authenticated` — bug latente mascarado por consumidores mortos
+Descoberto ao mapear completude (2026-07-04): as views `v_modulos_catalogo` e `vw_recruta_module_progress_v2` **negam permissão (`42501 permission denied`) a um usuário `authenticated`** — confirmado ao vivo (login de teste) e no schema (`supabase/remote/supabase_remote_schema.sql`: **nenhum GRANT** para essas duas, ao contrário de peers recruta-facing como `v_lessons_panel` e `v_medals_status_v3`, que têm `GRANT SELECT TO authenticated`).
+
+**Não é RLS admin-only intencional** — são views voltadas ao recruta (catálogo de módulos, progresso de módulo por recruta). É um **GRANT ausente** (oversight de configuração), inconsistente com as views irmãs.
+
+**Por que não é bug ATIVO hoje:** os únicos consumidores dessas views são **código morto** (0 referências vivas): `src/components/dashboard/InstructionsInProgress.tsx` (`v_modulos_catalogo`), `src/hooks/useModulesProgress.ts` e `src/screens/ModulesScreen.tsx` (`vw_recruta_module_progress_v2`). Nenhum é renderizado/roteado. A tab de módulos viva **não** usa essas views (ver A-16). → **Latente:** se algum desses consumidores for revivido sem antes adicionar o GRANT, um recruta real quebra com 42501. Correção futura: `GRANT SELECT ... TO authenticated` (ou remover as views se confirmadas obsoletas junto do código morto).
+
+### A-16 — (NOVO) Dupla fonte de verdade do currículo: constante hardcoded vs banco
+A tab de módulos viva (`app/(tabs)/modules.tsx`) renderiza **100% de uma constante local** `MARINHA_CURRICULUM` (`src/constants/marinhaCurriculum.ts`, 110 linhas, títulos de módulo/lição e flags `locked` **hardcoded**), via `ModuleAccordion` — que é **display-only** (só expande/colapsa; **não** navega para lição, **não** lê o banco). Não há mistura em runtime (a tab não toca o DB).
+
+**O risco real é dupla fonte de verdade**, não crash: o currículo **exibido** ao recruta (constante congelada) pode **divergir do banco** (fonte real: **13 módulos / 51 lições**, 49 Marinha — usado pelo fluxo de lição `lesson/[id]`/`module/[id]`, progresso e XP). Dois problemas concretos:
+1. Se o currículo mudar no DB (add/remove/reordenar lição), a tab **não reflete** — mostra a constante estática.
+2. O estado `locked` é **hardcoded na constante**, não deriva do acesso/progresso real do recruta no DB — ou seja, o "cadeado" exibido não corresponde necessariamente ao que o recruta realmente pode abrir.
+
+Além disso, os IDs da constante (`mod_0`, …) não são os UUIDs do DB, então a visão-geral e o conteúdo real são universos separados. → **Risco de inconsistência/manutenção real** (não bug ativo). Reconciliação futura: alimentar a tab de módulos a partir do banco (mesma fonte do fluxo de lição), aposentando a constante — provavelmente junto com a revitalização/limpeza do código morto do A-15.
+
 ### A-5 — `catch` silenciosos
 Varredura em `src/` encontrou **catch verdadeiramente vazios apenas em `chatService.ts:357` e `:359`**, e ambos são **intencionais e defensáveis** (tentativa best-effort de extrair o body de erro da Edge Function antes de logar `message_send_failed` — o log ocorre logo depois; não há falha engolida sem telemetria). **Sem falha silenciosa crítica identificada** no caminho de chat. Demais `catch` (30 no total) logam ou propagam. Não auditados exaustivamente fora do fluxo de chat.
 
