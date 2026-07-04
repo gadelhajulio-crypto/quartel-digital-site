@@ -87,9 +87,14 @@ Fórmula p/ recalibrar: `perguntas = lições×Q_lição + módulos×Q_simulado`
 4. ~~CRÍTICO: qual ledger o ranking lê?~~ → **RESOLVIDO (A-20): `xp_eventos`.** Bloqueio do RPC de XP removido.
 5. Nomes/estrutura dos módulos placeholder de Ex/Aero (espelhar Marinha 1:1 ou lista adaptada?).
 
-## 9. Ordem de implementação proposta (pós-aprovação)
-1. Migration: `is_placeholder` nas 4 tabelas + alterações de simulado first-class em `c9_aula_quizzes` (+índice) — **versionada**.
-2. RPC `rpc_c9_submit_attempt` (avaliação + XP 1ª-tentativa) — **versionada**.
-3. Seed placeholder (mass insert) — **script versionado**, revisável, com `is_placeholder=true`.
-4. UI: tela de quiz (fim da lição) + tela de simulado (por módulo).
-5. Grants nas views c9 a `authenticated` (checar, padrão A-15).
+## 9. Status de implementação (backend — 2026-07-04)
+1. ✅ **Schema** (`20260704003000`): `is_placeholder` em modulos/aulas/c9_aula_quizzes/c9_aula_quiz_perguntas; simulado first-class (`aula_id` nullable + `modulo_id` + `escopo` + CHECKs + índice 1-simulado/módulo); índice parcial `ux_xp_eventos_quiz_unique`.
+2. ✅ **View de agregação + RPC** (`20260704004000` + fix `20260704006000`): `v_c9_simulado_execucao` (agrega perguntas das lições do módulo, esconde gabarito) e `rpc_c9_submit_attempt` (avalia server-side, tentativa, XP em `xp_eventos` só na 1ª tentativa).
+3. ✅ **Seed** (`20260704005000`): esqueleto mínimo Ex/Aero — 4 módulos, 8 aulas, 8 quizzes, 4 simulados, 16 perguntas, 64 alternativas, tudo `is_placeholder=true`.
+4. ⏳ **UI** (próxima etapa, pausada p/ review do backend): tela de quiz (fim da lição) + tela de simulado (por módulo).
+
+**Validação (read-only):** `v_c9_simulado_execucao` retorna 4 simulados × 4 perguntas agregadas; `correta` não vaza; módulos/lições placeholder visíveis via views canônicas. **RPC não exercitada ao vivo** (chamá-la criaria tentativa+xp_eventos em prod, que não consigo limpar) — deploy + lógica verificados por leitura; a concessão de XP não foi disparada.
+
+**Descoberta durante a validação (A-22):** as views de execução C9 eram `security_invoker`, mas as tabelas `c9_*` têm RLS sem GRANT a `authenticated` — e **não devem** ganhar GRANT porque `c9_aula_quiz_alternativas.correta` é o gabarito. Padrão correto = view **`security definer`** (roda como owner, projeta sem `correta`), com GRANT só na view. Aplicado à `v_c9_simulado_execucao`. **Pendente (UI phase):** `v_c9_quiz_execucao`/`v_c9_quiz_resultado` (pré-existentes) têm o mesmo problema e precisam do mesmo tratamento antes da UI de quiz. Ver A-22.
+
+**Pendências abertas do design:** `xp_valor` real das lições Marinha (§8.2, A-19 bloqueia leitura direta); força-filtering na leitura de simulado (UI); cap diário de XP (não implementado — decisão foi só "1ª tentativa").
