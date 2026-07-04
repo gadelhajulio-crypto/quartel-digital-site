@@ -120,12 +120,22 @@ A Seção 7 lista `recrutas, modulos, missoes, progresso_missoes, licoes, recrut
 
 ## 7. Achados de qualidade / higiene
 
-### A-3 — Duplicação de cliente Supabase (potencial inconsistência de sessão)
-Existem **dois clientes Supabase**:
-- `src/lib/supabase.ts` — **canônico**, com adapter `expo-secure-store` para persistência de sessão.
-- `_lib/supabase.ts` (raiz) — cliente **"pelado"**, `createClient(url, anon)` **sem adapter de storage/sessão**.
+### A-3 — Duplicação de cliente Supabase · ✅ RESOLVIDO POR REMOÇÃO (2026-07-04)
 
-`_lib/supabase.ts` é importado por **`src/components/AvatarUpload.tsx`** e **`src/components/TacticalLibrary.tsx`**. Como não compartilha o storage de sessão do cliente canônico, esses componentes podem operar com uma sessão diferente (ou não-persistida) da do resto do app. → **Achado a investigar depois** (não corrigido). Risco: chamadas autenticadas desses componentes podem falhar de RLS ou usar identidade divergente.
+> **STATUS: RESOLVIDO em 2026-07-04.** Removidos `_lib/supabase.ts` (cliente duplicado), `src/components/AvatarUpload.tsx` e `src/components/TacticalLibrary.tsx` (únicos consumidores). Typecheck (`tsc --noEmit`) passou limpo após a remoção. Cliente canônico único: `src/lib/supabase.ts`.
+
+**Diagnóstico completo (o que a investigação profunda revelou):**
+Existiam **dois clientes Supabase**:
+- `src/lib/supabase.ts` — **canônico**, com adapter `expo-secure-store` (`persistSession:true`, `autoRefreshToken:true`). 41 consumidores (services, hooks, screens, AuthContext).
+- `_lib/supabase.ts` (raiz) — cliente **"pelado"**, `createClient(url, anon)` **sem adapter de storage/sessão**. Por ser instância separada sem acesso à sessão persistida no SecureStore, **operava sempre como `anon`** (nunca via o recruta logado).
+
+O `_lib` era importado por **apenas 2 arquivos**, ambos **código morto/órfão** — **nenhum é renderizado ou importado em qualquer lugar do repo**:
+- `TacticalLibrary.tsx` — importava o cliente mas o único uso de `supabase` era uma **linha comentada** (`// ...rpc('check_total_release')`). Import 100% morto.
+- `AvatarUpload.tsx` — usava o `_lib` de fato (`storage.from('avatars').upload/download`), mas nunca era montado. Bônus: o path de upload (`${Date.now()}.ext`) não era escopado por usuário.
+
+**Conclusão:** A-3 **não era bug ativo** — era cliente duplicado importado por componentes órfãos. O risco de sessão inconsistente (upload como anon → falha de RLS) era **latente**, materializável só se alguém plugasse o `AvatarUpload` no futuro. Histórico git achatado (tudo em `adec321`, 2026-01-22); evidência circunstancial forte de scaffold inicial superado pelo canônico e nunca limpo. Nenhuma justificativa para um segundo cliente anon (o único uso real era autenticado). Por isso a rota escolhida foi **remoção**, não migração.
+
+> ⚠️ **Se o upload de avatar voltar ao roadmap:** implementar **do zero** sobre o cliente canônico (`src/lib/supabase.ts`), com path escopado por `auth.uid()` e a RLS do bucket `avatars` verificada. **Não** reaproveitar o código deletado (`AvatarUpload.tsx`) — ele usava o cliente anon e path não-escopado.
 
 ### A-4 — Rotas de onboarding duplicadas
 Existe onboarding em `app/(onboarding)/*` **e** em `app/(stack)/onboarding/*` (`instructor-select`, `instructor-confirm`, `instructor-confirmed`, `index`). Possível legado/duplicação de fluxo. Anotado para consolidação futura.
