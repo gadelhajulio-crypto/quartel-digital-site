@@ -192,6 +192,14 @@ Descoberto ao validar o A-16 (2026-07-04): o módulo **`[QA] Módulo Teste rpc_c
 
 **Prioridade: baixa AGORA** (não há usuários reais em produção), mas **bloqueador de lançamento público** — deve ser removido/despublicado do banco (ou marcado `ativo=false`, já que `v_modulos_catalogo` filtra por `ativo=true`) **antes** de qualquer divulgação. Não é bug de código; é higiene de dados. Sem ação nesta sessão por decisão de produto.
 
+### A-18 — Drift de schema da camada C9 (migration local no-op ≠ remoto) · ✅ RECONCILIADO (2026-07-04)
+
+> **STATUS: RECONCILIADO em 2026-07-04.** Migration `20260704002000_c9_reconcile_remote_drift.sql` aplicada (`supabase db push`) — **no-op perfeito no prod** (todas as colunas reais retornaram "already exists, skipping", confirmando que a reconciliação bate 100% com o remoto). Repo agora reflete o schema c9 verdadeiro.
+
+**Diagnóstico:** a migration `20260427214001_create_c9_didactic_layer.sql` era uma "migration de sincronização" com `CREATE TABLE IF NOT EXISTS`. As tabelas c9_ **já existiam no prod** (criadas direto no banco), então a migration foi **no-op ao ser aplicada** — consta como aplicada (Local==Remote), mas **descrevia colunas que nunca vigoraram**. O repo documentava um schema c9 falso. Drift do tipo banco↔git da Seção 17, mascarado por `IF NOT EXISTS`.
+
+Deltas reais (local errado → remoto real): `conteudos.conteudo`→`corpo_markdown`(+tipo/versao/origem/metadata); `flashcards.frente/verso`→`pergunta/resposta`; `quiz_perguntas.pergunta`→`enunciado`; `quiz_alternativas.is_correta`→`correta`; `quiz_tentativas.pontuacao/respostas_jsonb/sucesso`→`respostas/total_perguntas/total_acertos/percentual/finalizada`; função `c9_update_updated_at_column`→`c9_set_updated_at`. Introspecção via `supabase/remote/supabase_remote_schema.sql`. Base para o design de quiz/simulado (ver `docs/DESIGN_QUIZ_SIMULADO.md`).
+
 ### A-5 — `catch` silenciosos
 Varredura em `src/` encontrou **catch verdadeiramente vazios apenas em `chatService.ts:357` e `:359`**, e ambos são **intencionais e defensáveis** (tentativa best-effort de extrair o body de erro da Edge Function antes de logar `message_send_failed` — o log ocorre logo depois; não há falha engolida sem telemetria). **Sem falha silenciosa crítica identificada** no caminho de chat. Demais `catch` (30 no total) logam ou propagam. Não auditados exaustivamente fora do fluxo de chat.
 
