@@ -154,15 +154,32 @@ O `_lib` era importado por **apenas 2 arquivos**, ambos **código morto/órfão*
 ### A-14 — (NOVO, não resolvido) Possível duplicação de lógica de seleção de instrutor
 Após remover o Grupo 2, restam **dois pickers de instrutor vivos**: `app/(onboarding)/instrutor.tsx` (passo do onboarding) e `app/(stack)/instructor/select.tsx` (trocar instrutor depois). Podem compartilhar lógica duplicada de listagem/seleção. **Fora do escopo do A-4** (que era o grupo de rotas duplicado) — anotado para investigação futura de consolidação de componente. Não é bug ativo; é oportunidade de DRY.
 
-### A-15 — (NOVO) Views sem `GRANT` a `authenticated` — bug latente mascarado por consumidores mortos
-Descoberto ao mapear completude (2026-07-04): as views `v_modulos_catalogo` e `vw_recruta_module_progress_v2` **negam permissão (`42501 permission denied`) a um usuário `authenticated`** — confirmado ao vivo (login de teste) e no schema (`supabase/remote/supabase_remote_schema.sql`: **nenhum GRANT** para essas duas, ao contrário de peers recruta-facing como `v_lessons_panel` e `v_medals_status_v3`, que têm `GRANT SELECT TO authenticated`).
+### A-15 — Views sem `GRANT` a `authenticated` · ✅ RESOLVIDO (2026-07-04)
+
+> **STATUS: RESOLVIDO em 2026-07-04.** Migration `20260704001000_a15_grant_module_views_authenticated.sql` adiciona `GRANT SELECT ... TO authenticated` a `v_modulos_catalogo`, `vw_recruta_module_progress_v2` e `vw_rdm_lessons_v2` (esta última também não tinha grant e é usada pelo `useModuleLessons` no detalhe de módulo). Aplicada via `supabase db push` (versionada + aplicada, sem drift) e **verificada ao vivo**: query autenticada a `v_modulos_catalogo` que antes dava `42501` agora retorna 13 módulos. Os consumidores mortos (`InstructionsInProgress`, `useModulesProgress`, `ModulesScreen`) foram **removidos** junto do A-16.
+
+**Diagnóstico original.** Descoberto ao mapear completude (2026-07-04): as views `v_modulos_catalogo` e `vw_recruta_module_progress_v2` **negam permissão (`42501 permission denied`) a um usuário `authenticated`** — confirmado ao vivo (login de teste) e no schema (`supabase/remote/supabase_remote_schema.sql`: **nenhum GRANT** para essas duas, ao contrário de peers recruta-facing como `v_lessons_panel` e `v_medals_status_v3`, que têm `GRANT SELECT TO authenticated`).
 
 **Não é RLS admin-only intencional** — são views voltadas ao recruta (catálogo de módulos, progresso de módulo por recruta). É um **GRANT ausente** (oversight de configuração), inconsistente com as views irmãs.
 
 **Por que não é bug ATIVO hoje:** os únicos consumidores dessas views são **código morto** (0 referências vivas): `src/components/dashboard/InstructionsInProgress.tsx` (`v_modulos_catalogo`), `src/hooks/useModulesProgress.ts` e `src/screens/ModulesScreen.tsx` (`vw_recruta_module_progress_v2`). Nenhum é renderizado/roteado. A tab de módulos viva **não** usa essas views (ver A-16). → **Latente:** se algum desses consumidores for revivido sem antes adicionar o GRANT, um recruta real quebra com 42501. Correção futura: `GRANT SELECT ... TO authenticated` (ou remover as views se confirmadas obsoletas junto do código morto).
 
-### A-16 — (NOVO) Dupla fonte de verdade do currículo: constante hardcoded vs banco
-A tab de módulos viva (`app/(tabs)/modules.tsx`) renderiza **100% de uma constante local** `MARINHA_CURRICULUM` (`src/constants/marinhaCurriculum.ts`, 110 linhas, títulos de módulo/lição e flags `locked` **hardcoded**), via `ModuleAccordion` — que é **display-only** (só expande/colapsa; **não** navega para lição, **não** lê o banco). Não há mistura em runtime (a tab não toca o DB).
+### A-16 — Dupla fonte de verdade do currículo: constante hardcoded vs banco · ✅ RESOLVIDO (2026-07-04)
+
+> **STATUS: RESOLVIDO em 2026-07-04 (Opção A).** A tab de módulos agora é **DB-driven**:
+> - Novo hook `src/hooks/useModulesCatalog.ts` busca `v_modulos_catalogo` (módulos por força) + `v_lessons_panel` (lições por força, view canônica RCC), agrupa lições por módulo e aplica gate por módulo (`canAccessModule` — degustação/plano). **Cadeado por lição = `false` sempre** e intencional: o banco não sabe travar lição (`vw_rdm_lessons_v2.status` é `'available'` fixo) — cadeado real fica para quando existir quiz/pré-requisito (comentado no código).
+> - `app/(tabs)/modules.tsx` trocou `MARINHA_CURRICULUM` pelo hook, preservando o visual `ModuleAccordion`, com estados de loading e **"Conteúdo em desenvolvimento"** (para força sem currículo, em vez de lista vazia).
+> - **Removidos** (código morto): `src/constants/marinhaCurriculum.ts`, `src/screens/ModulesScreen.tsx`, `src/hooks/useModulesProgress.ts`, `src/components/dashboard/InstructionsInProgress.tsx`.
+> - `tsc --noEmit` limpo. Validado via consulta autenticada (usuário de teste, Marinha): a tab renderiza os **11 módulos reais / 49 lições** do banco.
+>
+> **Desvio do plano literal (reportado):** o plano citava `vw_rdm_lessons_v2` como fonte de lições, mas descobriu-se que ela é **degustação-only** (`WHERE is_degustacao = true`) e já usada por `useModuleLessons`. Fonte correta = `v_lessons_panel` (canônica, currículo completo). Intent (DB-driven) preservado.
+>
+> **Notas de acompanhamento (não-bloqueantes, achados de dados):**
+> 1. Exército/Aeronáutica têm **1 módulo-stub degustação cada** ("Regulamento Disciplinar…", 1 lição) — não vazio. Logo o estado "em desenvolvimento" (que dispara em lista vazia) **não** aparece para elas hoje; mostram o stub. Se quiser forçá-las a "em desenvolvimento", é um threshold trivial — decisão de produto.
+> 2. `tipo_acesso` real inclui **`'premium'`**, ausente do tipo `Profile` (`'degustacao'|'completo'`); `canAccessModule` cai no default-allow (funciona, mas é divergência tipo↔dados — parente do A-1).
+> 3. Módulo **`[QA] Módulo Teste rpc_complete_lesson`** aparece em prod para Marinha — higiene de dados (conteúdo de QA visível a recruta real).
+
+**Diagnóstico original.** A tab de módulos viva (`app/(tabs)/modules.tsx`) renderiza **100% de uma constante local** `MARINHA_CURRICULUM` (`src/constants/marinhaCurriculum.ts`, 110 linhas, títulos de módulo/lição e flags `locked` **hardcoded**), via `ModuleAccordion` — que é **display-only** (só expande/colapsa; **não** navega para lição, **não** lê o banco). Não há mistura em runtime (a tab não toca o DB).
 
 **O risco real é dupla fonte de verdade**, não crash: o currículo **exibido** ao recruta (constante congelada) pode **divergir do banco** (fonte real: **13 módulos / 51 lições**, 49 Marinha — usado pelo fluxo de lição `lesson/[id]`/`module/[id]`, progresso e XP). Dois problemas concretos:
 1. Se o currículo mudar no DB (add/remove/reordenar lição), a tab **não reflete** — mostra a constante estática.
