@@ -110,9 +110,13 @@ A Seção 7 lista `recrutas, modulos, missoes, progresso_missoes, licoes, recrut
 **Locais (`supabase/functions/`):** `chat-ai`, `chat-central`, `chat-notify`, `instrutor-send`, `stripe-create-checkout-session`.
 **Deployadas (prod, via `functions list`):** `create-recruta` (v33), `instrutor-send` (v38), `chat-central` (v57), `stripe-create-checkout-session` (v14), `chat-notify` (v8).
 
-→ **Achado A-2 (drift deploy↔fonte, dois sentidos):**
-- **`chat-ai`** existe como fonte local mas **não está deployada** e **não é invocada por ninguém** (`grep` só encontra a própria definição). → **candidato a código morto** (provável predecessora de `chat-central`/`instrutor-send`). Não removido — anotado.
-- **`create-recruta`** está **deployada (v33, 2025-12-14)** mas **não tem fonte no repo**. → função em produção **sem código versionado localmente**. Risco de manutenção: não há fonte para auditar/reproduzir. Anotado.
+→ **Achado A-2 (drift deploy↔fonte, dois sentidos) — ambos os lados RESOLVIDOS:**
+
+- **`chat-ai`** · ✅ **RESOLVIDO POR REMOÇÃO (2026-07-04).** Deletado `supabase/functions/chat-ai/`; typecheck (`tsc --noEmit`) limpo após a remoção.
+  - **Diagnóstico:** protótipo de **primeira geração** do chat do instrutor — usava a **OpenAI Assistants API** (`openai.beta.threads.runs`) com assistant IDs hardcoded por força e retorno assíncrono `{ threadId, runId }` (modelo de polling). Foi **inteiramente superado** pela pipeline atual `instrutor-send` → `chat-central` (migrada para a **Responses API** com SSE streaming na Wave 5f + cache institucional na Wave 5g + guard HMAC). Não deployado, **zero referências em código** (grep repo-wide), e já marcado como "ZERO matches / Limpo" por **auditorias anteriores independentes** (`supabase/baseline/P5B_DEPRECATE_COMPLETE_LESSON_HANDOFF.md`, `XP_EVENTS_LEGACY_AUDIT.md`). Confirmado morto, não desligado temporariamente.
+  - **Nota (fora do repo, não-bloqueante):** os assistant IDs hardcoded (`asst_...` por força) que existiam nesse código podem ainda existir na conta OpenAI. Arquivá-los/deletá-los lá é **decisão externa ao repositório** — não impede nem depende desta remoção.
+
+- **`create-recruta`** · ✅ resolvido em duas etapas: fonte **recuperada** e versionada (commit `b386e5d`), depois a função deployada foi **removida de produção** por ser um endpoint sem guard (ver A-9). Drift deploy↔fonte fechado.
 
 **Contrato de resposta (`instrutor-send`) vs. Seção 15 do spec:** a função responde no padrão `{ ok: boolean, reason: string, request_id }` com HTTP status coerente (401/403/400/500). Alinha com o espírito da Seção 15 (nunca inferir sucesso; erro estruturado). Nota: usa `reason` em vez de `error`, e não retorna `checklistAccessUrl` (correto — é campo do funil, não do app). **Contrato internamente consistente.**
 
