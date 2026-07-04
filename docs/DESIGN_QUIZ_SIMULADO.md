@@ -49,7 +49,8 @@ Racional: quiz (≤20) < lição (~50) < simulado (≤100). Os **valores** (base
 1. Avalia acertos **server-side** (gabarito nunca sai do banco).
 2. Insere `c9_aula_quiz_tentativas` (respostas, total_perguntas, total_acertos, percentual).
 3. **XP só na 1ª tentativa** daquele `quiz_id`+recruta: `IF NOT EXISTS (SELECT 1 FROM c9_aula_quiz_tentativas WHERE quiz_id=? AND recruta_id=auth.uid())` **antes** de inserir a tentativa → concede; senão registra a tentativa sem XP.
-4. **PRÉ-REQUISITO ABERTO (A-20):** existem **3 tabelas de XP** (`xp_eventos` canônico, `xp_events` legado, `user_xp`). Antes de escrever este RPC é obrigatório **confirmar qual ledger o ranking realmente lê** (views `v_ranking_mensal_rcc`/`mv_ranking_mensal`) — senão o XP de quiz/simulado não conta no ranking, anulando o propósito. O RPC grava nessa ledger, com `tipo` = `quiz_aula_concluido`/`simulado_modulo_concluido` e referência = quiz_id (rastreável, sem farm), respeitando cap diário.
+4. **Ledger de destino RESOLVIDO (A-20): `xp_eventos`.** É a ledger canônica que o ranking lê (`mv_xp_mensal_recruta = SUM(quantidade) FROM xp_eventos` → todo o ranking) e onde o `rpc_complete_lesson` grava. O RPC insere em **`xp_eventos`** (`quantidade`, `forca` — resolver do recruta p/ o CHECK, `tipo` = `quiz_aula_concluido`/`simulado_modulo_concluido`, `referencia_id` = quiz_id). **NÃO** usar `xp_events`/`user_xp` (subsistema legado morto, invisível ao ranking). Respeitar cap diário (herdado do padrão 200/dia).
+5. **Nota operacional:** ranking é MATERIALIZED — XP novo só aparece após REFRESH das MVs (sem schedule hoje). O RPC grava certo; a visibilidade no ranking depende do refresh (fora do escopo do RPC).
 
 ## 4. Placeholder de módulos/lições — Exército & Aeronáutica
 Espelhar a estrutura Marinha (10 módulos reais), nomes adaptados por força. Densidade proposta (**recomendada**): **10 módulos × 5 lições = 50 lições/força**. Todos `is_placeholder=true`, `ativo=true`, `is_degustacao=false` (exceto 1 módulo degustação/força, espelhando Marinha). Lições placeholder com `xp_valor=0` (não dão XP até virarem reais).
@@ -83,7 +84,7 @@ Fórmula p/ recalibrar: `perguntas = lições×Q_lição + módulos×Q_simulado`
 1. **Densidade** (seção 4/6): recomendada (~3 310 linhas) vs leve (~1 500)? Quantos módulos/lições por força de Exército/Aeronáutica?
 2. **`xp_valor` real das lições** Marinha (não lido — `aulas` RLS). Confirmar se o anchor de 50 procede ou se varia por lição.
 3. ~~Reaproveitar `conceder_xp_simulado`~~ → **RESOLVIDO (A-20): NÃO reaproveitar** (subsistema de XP legado). Criar `rpc_c9_submit_attempt` novo, escrevendo na ledger canônica.
-4. **CRÍTICO (A-20):** qual das 3 tabelas de XP (`xp_eventos`/`xp_events`/`user_xp`) o **ranking** lê? O RPC de XP novo tem que gravar nessa. Introspecção das views de ranking pendente — **bloqueia o RPC de XP** (mas não a migration de schema nem o seed).
+4. ~~CRÍTICO: qual ledger o ranking lê?~~ → **RESOLVIDO (A-20): `xp_eventos`.** Bloqueio do RPC de XP removido.
 5. Nomes/estrutura dos módulos placeholder de Ex/Aero (espelhar Marinha 1:1 ou lista adaptada?).
 
 ## 9. Ordem de implementação proposta (pós-aprovação)
