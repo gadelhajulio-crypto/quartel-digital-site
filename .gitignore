@@ -3,6 +3,9 @@
 # dependencies
 node_modules/
 
+# Supabase CLI local state (machine-specific, não versionar)
+supabase/.temp/linked-project.json
+
 # Expo
 .expo/
 dist/
