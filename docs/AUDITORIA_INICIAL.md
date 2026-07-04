@@ -175,9 +175,9 @@ Após remover o Grupo 2, restam **dois pickers de instrutor vivos**: `app/(onboa
 > **Desvio do plano literal (reportado):** o plano citava `vw_rdm_lessons_v2` como fonte de lições, mas descobriu-se que ela é **degustação-only** (`WHERE is_degustacao = true`) e já usada por `useModuleLessons`. Fonte correta = `v_lessons_panel` (canônica, currículo completo). Intent (DB-driven) preservado.
 >
 > **Notas de acompanhamento (não-bloqueantes, achados de dados):**
-> 1. Exército/Aeronáutica têm **1 módulo-stub degustação cada** ("Regulamento Disciplinar…", 1 lição) — não vazio. Logo o estado "em desenvolvimento" (que dispara em lista vazia) **não** aparece para elas hoje; mostram o stub. Se quiser forçá-las a "em desenvolvimento", é um threshold trivial — decisão de produto.
+> 1. Exército/Aeronáutica têm **1 módulo de degustação intencional cada** ("Regulamento Disciplinar…", 1 lição) — **não é placeholder incompleto**, é o conteúdo grátis proposital dessas forças. Comportamento correto: a tab mostra esse módulo (não cai em "em desenvolvimento"). **Decisão de produto (2026-07-04): manter como está — threshold descartado, sem ação.**
 > 2. `tipo_acesso` real inclui **`'premium'`**, ausente do tipo `Profile` (`'degustacao'|'completo'`); `canAccessModule` cai no default-allow (funciona, mas é divergência tipo↔dados — parente do A-1).
-> 3. Módulo **`[QA] Módulo Teste rpc_complete_lesson`** aparece em prod para Marinha — higiene de dados (conteúdo de QA visível a recruta real).
+> 3. Ver A-17 (módulo de QA visível em prod).
 
 **Diagnóstico original.** A tab de módulos viva (`app/(tabs)/modules.tsx`) renderiza **100% de uma constante local** `MARINHA_CURRICULUM` (`src/constants/marinhaCurriculum.ts`, 110 linhas, títulos de módulo/lição e flags `locked` **hardcoded**), via `ModuleAccordion` — que é **display-only** (só expande/colapsa; **não** navega para lição, **não** lê o banco). Não há mistura em runtime (a tab não toca o DB).
 
@@ -186,6 +186,11 @@ Após remover o Grupo 2, restam **dois pickers de instrutor vivos**: `app/(onboa
 2. O estado `locked` é **hardcoded na constante**, não deriva do acesso/progresso real do recruta no DB — ou seja, o "cadeado" exibido não corresponde necessariamente ao que o recruta realmente pode abrir.
 
 Além disso, os IDs da constante (`mod_0`, …) não são os UUIDs do DB, então a visão-geral e o conteúdo real são universos separados. → **Risco de inconsistência/manutenção real** (não bug ativo). Reconciliação futura: alimentar a tab de módulos a partir do banco (mesma fonte do fluxo de lição), aposentando a constante — provavelmente junto com a revitalização/limpeza do código morto do A-15.
+
+### A-17 — (NOVO, pendência PRÉ-LANÇAMENTO) Módulo de QA visível em produção
+Descoberto ao validar o A-16 (2026-07-04): o módulo **`[QA] Módulo Teste rpc_complete_lesson`** (força Marinha, 1 lição) existe em produção e **aparece na tab de módulos para recrutas reais**. É conteúdo de teste/QA que vazou para o catálogo de produção.
+
+**Prioridade: baixa AGORA** (não há usuários reais em produção), mas **bloqueador de lançamento público** — deve ser removido/despublicado do banco (ou marcado `ativo=false`, já que `v_modulos_catalogo` filtra por `ativo=true`) **antes** de qualquer divulgação. Não é bug de código; é higiene de dados. Sem ação nesta sessão por decisão de produto.
 
 ### A-5 — `catch` silenciosos
 Varredura em `src/` encontrou **catch verdadeiramente vazios apenas em `chatService.ts:357` e `:359`**, e ambos são **intencionais e defensáveis** (tentativa best-effort de extrair o body de erro da Edge Function antes de logar `message_send_failed` — o log ocorre logo depois; não há falha engolida sem telemetria). **Sem falha silenciosa crítica identificada** no caminho de chat. Demais `catch` (30 no total) logam ou propagam. Não auditados exaustivamente fora do fluxo de chat.
