@@ -1,6 +1,8 @@
-import { View, FlatList, StyleSheet } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useModuleLessons } from '../../../src/hooks/useModuleLessons';
+import { useModuleSimulado } from '../../../src/hooks/useQuizExecucao';
 import { LessonRow } from '../../../src/components/rows/LessonRow';
 import { InstitutionalEmpty } from '../../../src/components/InstitutionalEmpty';
 import { InstitutionalLoading } from '../../../src/components/InstitutionalLoading';
@@ -14,6 +16,8 @@ export default function ModuloAulasScreen() {
   const router = useRouter();
 
   const { lessons, loading } = useModuleLessons(id);
+  // Simulado do módulo (CTA opcional). null quando o módulo não tem simulado.
+  const { simulado } = useModuleSimulado(id);
 
   if (loading) {
     return <InstitutionalLoading />;
@@ -33,6 +37,18 @@ export default function ModuloAulasScreen() {
         keyExtractor={(item) => item.lesson_id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          simulado ? (
+            <TouchableOpacity
+              style={styles.simuladoBtn}
+              onPress={() => router.push(`/(stack)/simulado/${id}` as any)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="clipboard-outline" size={18} color={tatico.colors.accent} style={{ marginRight: 8 }} />
+              <Text style={styles.simuladoBtnText}>Fazer simulado do módulo (+XP)</Text>
+            </TouchableOpacity>
+          ) : null
+        }
         ListEmptyComponent={
           <View style={styles.emptyWrapper}>
             <InstitutionalEmpty text="Nenhuma aula disponível neste módulo." />
@@ -70,5 +86,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingTop: 64,
+  },
+  simuladoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: tatico.colors.accent,
+    marginBottom: spacing.s,
+  },
+  simuladoBtnText: {
+    color: tatico.colors.accent,
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

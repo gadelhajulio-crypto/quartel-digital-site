@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useLessonData } from '../../../src/hooks/useLessonData';
 import { useCanonicalIdentity } from '../../../src/hooks/useCanonicalIdentity';
+import { useLessonQuiz } from '../../../src/hooks/useQuizExecucao';
 import { completeLesson } from '../../../src/services/progressService';
 import { VideoPlayer } from '../../../src/components/VideoPlayer';
 import { theme } from '../../../src/theme';
@@ -15,6 +16,8 @@ export default function LessonScreen() {
     const { recruta_id } = useCanonicalIdentity();
 
     const { data: lesson, loading } = useLessonData(String(id), recruta_id ?? undefined);
+    // Quiz da lição (CTA opcional, não bloqueia conclusão). null quando não há quiz.
+    const { quiz } = useLessonQuiz(String(id));
     const [completing, setCompleting] = useState(false);
     const [justCompleted, setJustCompleted] = useState(false);
 
@@ -128,6 +131,16 @@ export default function LessonScreen() {
 
             {/* Footer Fixo */}
             <View style={styles.footer}>
+                {/* CTA opcional de quiz — não bloqueia a conclusão da aula */}
+                {quiz && (
+                    <TouchableOpacity
+                        style={styles.quizBtn}
+                        onPress={() => router.push(`/(stack)/quiz/${id}` as any)}
+                    >
+                        <Ionicons name="help-circle-outline" size={18} color={theme.colors.gold} style={{ marginRight: 8 }} />
+                        <Text style={styles.quizBtnText}>Testar conhecimento (+XP)</Text>
+                    </TouchableOpacity>
+                )}
                 {isCompleted ? (
                     <View style={[styles.completeBtn, styles.completedBanner]}>
                         <Ionicons name="checkmark-circle" size={18} color="#000" style={{ marginRight: 8 }} />
@@ -196,6 +209,21 @@ const styles = StyleSheet.create({
         paddingVertical: 16,
         borderRadius: 8,
         alignItems: 'center',
+    },
+    quizBtn: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 14,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: theme.colors?.gold || '#FFD700',
+        marginBottom: 10,
+    },
+    quizBtnText: {
+        color: theme.colors?.gold || '#FFD700',
+        fontWeight: '700',
+        fontSize: 14,
     },
     completedBanner: {
         flexDirection: 'row',
