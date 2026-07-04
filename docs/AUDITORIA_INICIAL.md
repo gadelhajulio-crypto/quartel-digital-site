@@ -205,3 +205,38 @@ Arquivos grandes **rastreados no git** que são artefato de auditoria/ferramenta
 - Não houve introspecção do schema remoto: a existência/assinatura de cada RPC/view não foi validada contra o banco. Divergências são "a reconciliar", não bugs confirmados.
 - Auditoria de `catch`/falso-sucesso foi **profunda no fluxo de chat** e **superficial** nos fluxos de lição/XP/onboarding/billing — estes merecem passagem dedicada em fase futura.
 - Subprojetos `quartel-digital-site/` e `site/` não foram auditados (fora de escopo).
+
+---
+
+## Adendo 2026-07-03 — Achados da recuperação de `create-recruta` (detalha A-2)
+
+A fonte da função `create-recruta` (deployada em prod, ACTIVE v33 de 2025-12-14, sem código no repo) foi recuperada via `supabase functions download` e versionada em `supabase/functions/create-recruta/index.ts` — **sem qualquer alteração de código**. A leitura revelou os achados abaixo. Nenhum foi corrigido; recuperar a fonte **não introduz nem resolve** estes riscos — apenas os torna visíveis.
+
+**Contexto da função:** provisionamento administrativo de recruta via `service_role` — recebe `{ email, name, senha, forca }`, faz `auth.admin.createUser({ email_confirm: true })`, `INSERT` em `recrutas`, e chama a RPC `atribuir_missao_inicial`. **O app mobile NÃO invoca esta função** (grep de `functions.invoke` em `src/` só acha `instrutor-send` e `stripe-...`) — é provável função de backoffice/OS.
+
+**Versão:** v33 na auditoria e v33 agora — sem alteração em prod nesse intervalo.
+
+### 🔴 A-9 (URGENTE — possível exposição ATIVA, não item de roadmap): endpoint de criação de contas sem authorization guard
+
+`create-recruta` cria usuários Auth com senha arbitrária e `email_confirm: true` usando `service_role`, com CORS `*`, e **não faz nenhuma verificação de autorização de quem chama** (grep confirma: zero checagem de role/claim/admin no código — só leitura de env e header CORS).
+
+**Por que isto pode ser exploração ativa hoje, independente do código:**
+- No Supabase, `verify_jwt = true` exige apenas um JWT **válido** — e a **anon key é um JWT válido** (`role=anon`). A anon key é **pública** (embarcada no app cliente; neste repo o `.env` que a contém está inclusive *tracked no git* — ver §8). Portanto, mesmo com `verify_jwt = true`, qualquer detentor da anon key pode invocar o endpoint.
+- Se `verify_jwt = false`, é pior: chamável **sem token algum**.
+- Em ambos os casos, como o código não valida papel/admin, o resultado é: **quem tiver a URL + a anon key pública pode criar contas arbitrárias em produção agora**.
+
+**Estado da verificação (limite honesto):** o `verify_jwt` **real da função deployada não pôde ser confirmado** nesta sessão — `create-recruta` **não está declarada** em `supabase/config.toml` (as declaradas: `instrutor-send`=true, `chat-central`=false, `chat-notify`=false, `stripe-...`=true), e a Management API não foi acessível read-only daqui (token do CLI no keyring do OS). **Não foi feito teste ao vivo** do endpoint por ser ação destrutiva (criaria usuário real). A escalada **independe** do valor exato de `verify_jwt` pelas razões acima.
+
+**Ação recomendada IMEDIATA (decisão do responsável, fora do escopo read-only):** confirmar no painel Supabase o `verify_jwt` de `create-recruta` e, independentemente do valor, mitigar já — uma das opções: (a) desabilitar/pausar a função se não estiver em uso; (b) adicionar guard de autorização no código (checar JWT de admin/role antes de criar); (c) restringir invocação. Tratar **antes** e **separado** dos riscos internos A-10/A-11/A-12.
+
+### 🟠 A-10 — Bug latente de identidade (`recruta_id` recebendo `auth_id`)
+A RPC é chamada com `atribuir_missao_inicial({ p_recruta_id: data.user.id })`, mas `data.user.id` é o **`auth_id`** (auth.uid()), **não** o `recrutas.id`. A convenção canônica avisa que `recrutas.id ≠ auth_id`. Se a RPC espera `recrutas.id`, recebe o identificador errado. Como `missaoError` é apenas logado (não fatal), **falha silenciosamente** — a missão inicial pode nunca ser atribuída. Contido (bug interno), mas real.
+
+### 🟠 A-11 — Divergência de schema no INSERT em `recrutas`
+O INSERT usa colunas `email, nome, plano:"basico", status:"ativo"` que **não constam** na descrição canônica atual de `recrutas` (que fala em `tipo_acesso`, `nome_guerra`, `onboarding_concluido`). Função é de dez/2025, anterior às waves recentes — se o schema mudou desde então, o INSERT pode quebrar. Não confirmável sem introspecção de schema.
+
+### 🟠 A-12 — RPC órfã `atribuir_missao_inicial`
+Não consta na lista canônica de RPCs (`MEMORY.md`) nem é referenciada pelo cliente. RPC "órfã" do ponto de vista do app — verificar existência/assinatura antes de assumir que funciona.
+
+### 🟢 Sem segredos hardcoded
+Usa env `PROJECT_URL`/`SERVICE_ROLE_KEY` (nomes custom, server-side — ok). Libs antigas (`std@0.168.0`), sem risco direto.
