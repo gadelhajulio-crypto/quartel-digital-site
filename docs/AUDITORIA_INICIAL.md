@@ -237,8 +237,14 @@ O texto abaixo preserva o diagnóstico original (histórico do porquê da decis�
 
 **Guard mínimo para eventual reativação:** `verify_jwt=true` + validar `Authorization: Bearer <JWT>` + checar admin (`app_metadata.role==='admin'` ou allowlist) — nunca confiar só na anon key; manter `service_role` apenas server-side; corrigir A-10 (usar `recrutas.id`, não `auth_id`) e adicionar validação de entrada antes do deploy.
 
-### 🟠 A-10 — Bug latente de identidade (`recruta_id` recebendo `auth_id`)
-A RPC é chamada com `atribuir_missao_inicial({ p_recruta_id: data.user.id })`, mas `data.user.id` é o **`auth_id`** (auth.uid()), **não** o `recrutas.id`. A convenção canônica avisa que `recrutas.id ≠ auth_id`. Se a RPC espera `recrutas.id`, recebe o identificador errado. Como `missaoError` é apenas logado (não fatal), **falha silenciosamente** — a missão inicial pode nunca ser atribuída. Contido (bug interno), mas real.
+### A-10 — Bug de identidade (`recruta_id` recebendo `auth_id`) · ✅ CORRIGIDO, validado por TESTE ISOLADO (2026-07-04)
+**Bug original:** a RPC era chamada com `atribuir_missao_inicial({ p_recruta_id: data.user.id })`, mas `data.user.id` é o **`auth_id`** (auth.uid()), **não** o `recrutas.id`. Como `recrutas.id ≠ auth_id` e a RPC insere em `progresso_missoes(recruta_id,…)` esperando o `recrutas.id`, o identificador errado era passado; como `missaoError` só era logado (não fatal), a missão inicial **falhava silenciosamente**.
+
+**Correção:** lógica extraída para `supabase/functions/create-recruta/core.ts` (`provisionRecruta`), que agora **captura o `recrutas.id` gerado no INSERT** (`.insert({...}).select("id").single()`) e passa **esse id** à RPC. `index.ts` virou só o wiring Deno chamando o core — comportamento HTTP idêntico exceto a correção (e o response agora inclui `recruta_id`).
+
+**Validação — ISOLADA, NÃO integração real:** teste `supabase/functions/create-recruta/test.mts` mocka o cliente Supabase (zero banco, zero Auth, zero Docker) e prova, com `auth_id` e `recrutas.id` deliberadamente distintos, que a RPC recebe o `recrutas.id` e **nunca** o `auth_id` (9/9 asserções passam via `node test.mts`). Email de teste usado no payload mock: `teste-a10-fix@example.com` (só string no mock — nenhum usuário criado).
+
+> ⚠️ **Pendência antes de qualquer redeploy (Opção B):** esta validação é unitária/mock, **não** de integração. Antes de reativar a função em produção é obrigatório um teste de integração real (função servida contra um Supabase — de preferência stack local — confirmando linha em `recrutas` e em `progresso_missoes` com o `recruta_id` correto), **em conjunto** com o guard de autorização do A-9. A função permanece **removida de produção** até lá.
 
 ### A-11 — ~~Divergência de schema no INSERT em `recrutas`~~ · ❌ REFUTADO (2026-07-04, evidência de schema)
 Flag original (baseado na `MEMORY.md`): o INSERT usaria colunas ausentes do schema. **Refutado por evidência direta.** O `CREATE TABLE public.recrutas` no schema remoto (`supabase/remote/supabase_remote_schema.sql:8365`) contém **todas** as colunas do INSERT: `auth_id`, `email` (NOT NULL), `nome`, `forca` (NOT NULL, CHECK marinha/exercito/aeronautica), `patente`, `plano`, `status`. O INSERT é **schema-válido**. Não há divergência. *(Correção honesta de um over-flag anterior baseado em memória desatualizada, não no schema real.)*

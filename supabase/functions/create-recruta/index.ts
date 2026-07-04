@@ -1,5 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { provisionRecruta } from "./core.ts";
+
+// NOTA: função REMOVIDA de produção (decisão 2026-07-04, achado A-9 — sem guard de
+// autorização). Esta fonte segue versionada apenas como base para um eventual redeploy
+// futuro pela Opção B (guard admin + verify_jwt). NÃO reativar sem o guard.
+// A correção do A-10 vive em ./core.ts e foi validada por teste isolado (../create-recruta/test.mts),
+// NÃO por integração real — validação de integração completa é pré-requisito de qualquer redeploy.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,64 +31,25 @@ serve(async (req) => {
   }
 
   try {
-    const { email, name, senha, forca = "marinha" } = await req.json();
-
-    if (!email || !senha) {
-      return new Response(
-        JSON.stringify({ error: "Email e senha são obrigatórios" }),
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
+    const body = await req.json();
     const supabase = createClient(projectUrl, serviceRoleKey);
 
-    const { data, error } = await supabase.auth.admin.createUser({
-      email,
-      password: senha,
-      email_confirm: true,
-    });
+    const result = await provisionRecruta(supabase, body);
 
-    if (error) {
-      console.error("AUTH_ERROR", error);
+    if (!result.ok) {
       return new Response(
-        JSON.stringify({ error: error.message }),
-        { status: 400, headers: corsHeaders }
+        JSON.stringify({ error: result.error }),
+        { status: result.status, headers: corsHeaders }
       );
     }
 
-    const { error: dbError } = await supabase
-      .from("recrutas")
-      .insert({
-        auth_id: data.user.id,
-        email,
-        nome: name,
-        forca,
-        patente: "Recruta",
-        plano: "basico",
-        status: "ativo",
-      });
-// Atribuir missão inicial de onboarding
-const { error: missaoError } = await supabase.rpc(
-  "atribuir_missao_inicial",
-  {
-    p_recruta_id: data.user.id,
-  }
-);
-
-if (missaoError) {
-  console.error("MISSAO_ERROR", missaoError);
-}
-
-    if (dbError) {
-      console.error("DB_ERROR", dbError);
-      return new Response(
-        JSON.stringify({ error: dbError.message }),
-        { status: 400, headers: corsHeaders }
-      );
+    // Missão inicial não-fatal (comportamento original preservado): só sinaliza.
+    if (!result.missao_atribuida) {
+      console.error("MISSAO_ERROR", { recruta_id: result.recruta_id });
     }
 
     return new Response(
-      JSON.stringify({ success: true, auth_id: data.user.id }),
+      JSON.stringify({ success: true, auth_id: result.auth_id, recruta_id: result.recruta_id }),
       { status: 200, headers: corsHeaders }
     );
   } catch (err: any) {
