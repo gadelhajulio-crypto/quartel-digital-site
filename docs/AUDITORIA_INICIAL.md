@@ -141,8 +141,18 @@ O `_lib` era importado por **apenas 2 arquivos**, ambos **código morto/órfão*
 
 > ⚠️ **Se o upload de avatar voltar ao roadmap:** implementar **do zero** sobre o cliente canônico (`src/lib/supabase.ts`), com path escopado por `auth.uid()` e a RLS do bucket `avatars` verificada. **Não** reaproveitar o código deletado (`AvatarUpload.tsx`) — ele usava o cliente anon e path não-escopado.
 
-### A-4 — Rotas de onboarding duplicadas
-Existe onboarding em `app/(onboarding)/*` **e** em `app/(stack)/onboarding/*` (`instructor-select`, `instructor-confirm`, `instructor-confirmed`, `index`). Possível legado/duplicação de fluxo. Anotado para consolidação futura.
+### A-4 — Rotas de onboarding duplicadas · ✅ RESOLVIDO POR REMOÇÃO (2026-07-04)
+
+> **STATUS: RESOLVIDO em 2026-07-04.** Removido o grupo legado `app/(stack)/onboarding/` inteiro (5 arquivos: `_layout`, `index`, `instructor-select`, `instructor-confirm`, `instructor-confirmed`). `app/(stack)/_layout.tsx` não registrava nenhuma `Stack.Screen name="onboarding/..."` — sem linha órfã a remover. Typecheck (`tsc --noEmit`) limpo.
+
+**Diagnóstico completo:** existiam dois grupos de rota de onboarding:
+- **Grupo 1 `app/(onboarding)/`** (welcome → nome-guerra → instrutor → confirmacao) — **VIVO**: é o destino do roteador pós-auth `BootstrapGate.tsx` (`onboarding → '/(onboarding)/welcome'` quando `onboarding_concluido=false`), também referenciado por `ChatScreen`, e documentado como o onboarding em `docs/EXECUCAO_DECI-02_2026-03-13.md`. Edições git mais recentes (até 05-21).
+- **Grupo 2 `app/(stack)/onboarding/`** — **ÓRFÃO E QUEBRADO**: nada no app navegava para ele (zero refs externas a `/onboarding` cru); cobria só seleção de instrutor (versão parcial anterior, sem força/nome-guerra); e `instructor-select.tsx` empurrava para `/(onboarding)/instructor-confirm`, alvo **inexistente** no Grupo 1 → fluxo quebraria no meio. Parou de ser editado em 05-15, ausente do doc de execução.
+
+**Conclusão:** duplicação real (Grupo 2 superado pelo Grupo 1), não dois fluxos legítimos. **Não confundir** com `app/(stack)/instructor/*` (`select`/`index`) — fluxo **separado e vivo** de trocar instrutor pós-onboarding (usado por `profile.tsx`, `InstructorButton.tsx`, `ChatScreen`), **preservado**.
+
+### A-14 — (NOVO, não resolvido) Possível duplicação de lógica de seleção de instrutor
+Após remover o Grupo 2, restam **dois pickers de instrutor vivos**: `app/(onboarding)/instrutor.tsx` (passo do onboarding) e `app/(stack)/instructor/select.tsx` (trocar instrutor depois). Podem compartilhar lógica duplicada de listagem/seleção. **Fora do escopo do A-4** (que era o grupo de rotas duplicado) — anotado para investigação futura de consolidação de componente. Não é bug ativo; é oportunidade de DRY.
 
 ### A-5 — `catch` silenciosos
 Varredura em `src/` encontrou **catch verdadeiramente vazios apenas em `chatService.ts:357` e `:359`**, e ambos são **intencionais e defensáveis** (tentativa best-effort de extrair o body de erro da Edge Function antes de logar `message_send_failed` — o log ocorre logo depois; não há falha engolida sem telemetria). **Sem falha silenciosa crítica identificada** no caminho de chat. Demais `catch` (30 no total) logam ou propagam. Não auditados exaustivamente fora do fluxo de chat.
