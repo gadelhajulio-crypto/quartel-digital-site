@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useLessonData } from '../../../src/hooks/useLessonData';
 import { useCanonicalIdentity } from '../../../src/hooks/useCanonicalIdentity';
+import { useAuth } from '../../../src/context/AuthContext';
 import { useLessonQuiz } from '../../../src/hooks/useQuizExecucao';
 import { completeLesson } from '../../../src/services/progressService';
 import { VideoPlayer } from '../../../src/components/VideoPlayer';
@@ -14,6 +15,8 @@ export default function LessonScreen() {
     const router = useRouter();
     // Fix-03: recruta_id (recrutas.id) é a identidade canônica para queries de domínio
     const { recruta_id } = useCanonicalIdentity();
+    // Força do recruta (mesma fonte do A-16/useModulesCatalog) — filtra CTA de quiz.
+    const { profile } = useAuth();
 
     const { data: lesson, loading } = useLessonData(String(id), recruta_id ?? undefined);
     // Quiz da lição (CTA opcional, não bloqueia conclusão). null quando não há quiz.
@@ -131,8 +134,9 @@ export default function LessonScreen() {
 
             {/* Footer Fixo */}
             <View style={styles.footer}>
-                {/* CTA opcional de quiz — não bloqueia a conclusão da aula */}
-                {quiz && (
+                {/* CTA opcional de quiz — não bloqueia a conclusão da aula.
+                    Só aparece para lições da força do recruta (A-23). */}
+                {quiz && lesson.force === profile?.forca && (
                     <TouchableOpacity
                         style={styles.quizBtn}
                         onPress={() => router.push(`/(stack)/quiz/${id}` as any)}

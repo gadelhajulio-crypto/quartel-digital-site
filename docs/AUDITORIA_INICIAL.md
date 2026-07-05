@@ -229,6 +229,15 @@ Descoberto ao validar o backend de quiz/simulado (2026-07-04): as views `v_c9_qu
 - `v_c9_quiz_resultado` (`20260704007000`) → recriada como definer **com filtro explícito `recruta_id = auth.uid()`** nas duas CTEs/consulta (como definer o RLS "own attempts" não se aplica; sem o filtro exporia tentativas de outros). Confirmado: retorna só as tentativas do próprio recruta (0 para o test user).
 - `rpc_c9_submit_attempt` já é `SECURITY DEFINER` (avalia gabarito server-side) — não afetado.
 
+### A-23 — Filtragem por força nos CTAs de quiz/simulado · ✅ RESOLVIDO (2026-07-04)
+Os CTAs "Testar conhecimento" (lição) e "Fazer simulado do módulo" apareciam sempre que existisse quiz/simulado, sem checar se o conteúdo era da força do recruta.
+
+**Correção (mesma fonte/padrão do A-16):** o guard usa `useAuth().profile.forca` (a mesma fonte de força do `useModulesCatalog`) comparada à força do conteúdo **já carregado** — `lesson.force` (de `useLessonData`/`v_lessons_panel`) e `lessons[0].forca` (de `useModuleLessons`/`vw_rdm_lessons_v2`). CTA só aparece quando `conteudo.force === profile.forca`. Sem query nova nem lógica paralela. `tsc --noEmit` limpo; confirmado por leitura (test user Marinha × conteúdo Exército → `'exercito' !== 'marinha'` → CTA escondido).
+
+**Residual (não-bloqueante, defense-in-depth p/ depois):** o guard é no nível de UI (exibição + ponto de entrada de navegação). Um deep-link direto à rota `quiz/[aulaId]`/`simulado/[moduloId]` de outra força ainda carregaria o conteúdo, e o `rpc_c9_submit_attempt` não valida força. **Não é vulnerabilidade** — o XP é atribuído à força do próprio recruta e limitado a 1ª tentativa; responder um quiz de outra força só daria XP uma vez. Endurecer no data-layer (views de execução expondo `forca` + filtro no fetch/RPC) fica como hardening futuro.
+
+> ⚠️ **Impacto no roteiro de teste manual (`docs/DESIGN_QUIZ_SIMULADO.md` §10):** com o filtro, o **usuário de teste atual (Marinha) NÃO vê mais os CTAs** de quiz/simulado — o conteúdo placeholder é só Ex/Aero. Para exercitar quiz/simulado agora é **necessário um usuário de teste de força Exército ou Aeronáutica**.
+
 ### A-5 — `catch` silenciosos
 Varredura em `src/` encontrou **catch verdadeiramente vazios apenas em `chatService.ts:357` e `:359`**, e ambos são **intencionais e defensáveis** (tentativa best-effort de extrair o body de erro da Edge Function antes de logar `message_send_failed` — o log ocorre logo depois; não há falha engolida sem telemetria). **Sem falha silenciosa crítica identificada** no caminho de chat. Demais `catch` (30 no total) logam ou propagam. Não auditados exaustivamente fora do fluxo de chat.
 

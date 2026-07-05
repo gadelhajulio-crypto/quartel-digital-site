@@ -97,12 +97,12 @@ Fórmula p/ recalibrar: `perguntas = lições×Q_lição + módulos×Q_simulado`
 
 **Descoberta durante a validação (A-22):** as views de execução C9 eram `security_invoker`, mas as tabelas `c9_*` têm RLS sem GRANT a `authenticated` — e **não devem** ganhar GRANT porque `c9_aula_quiz_alternativas.correta` é o gabarito. Padrão correto = view **`security definer`** (roda como owner, projeta sem `correta`), com GRANT só na view. Aplicado à `v_c9_simulado_execucao`. **Pendente (UI phase):** `v_c9_quiz_execucao`/`v_c9_quiz_resultado` (pré-existentes) têm o mesmo problema e precisam do mesmo tratamento antes da UI de quiz. Ver A-22.
 
-**Pendências abertas do design:** `xp_valor` real das lições Marinha (§8.2, A-19 bloqueia leitura direta); força-filtering na leitura de simulado (UI); cap diário de XP (não implementado — decisão foi só "1ª tentativa").
+**Pendências abertas do design:** `xp_valor` real das lições Marinha (§8.2, A-19 bloqueia leitura direta); ~~força-filtering na navegação~~ ✅ feito (A-23; guard nos CTAs por `profile.forca`); cap diário de XP (não implementado — decisão foi só "1ª tentativa"); hardening de força no data-layer/RPC (A-23 residual, defense-in-depth).
 
 ## 10. Roteiro de teste manual (no app, login de teste)
 O teste end-to-end (responder → creditar XP) é **manual**, feito no app — nunca por chamada isolada de agente (mesma cautela do A-17). A partir daqui o dado de teste em prod é esperado; você decide se limpa depois.
 
-> ⚠️ **Nota (esperado NESTE teste, não é bug):** o usuário de teste é **Marinha**, mas o conteúdo placeholder de quiz/simulado só existe para **Exército/Aeronáutica**. Logo, durante este teste específico, um recruta Marinha verá/abrirá conteúdo de outra força para exercitar o pipeline. Isso é **intencional agora** — a filtragem por força na navegação de quiz/simulado é um refinamento de UI ainda pendente (ver "Pendências abertas"). Não confundir com bug.
+> ⚠️ **ATUALIZADO (A-23 — filtro por força implementado):** os CTAs de quiz/simulado agora só aparecem para conteúdo da **força do recruta**. Como o conteúdo placeholder é só **Exército/Aeronáutica** e o usuário de teste atual é **Marinha**, esse usuário **não verá mais os CTAs**. Para exercitar quiz/simulado é preciso um **usuário de teste de força Exército ou Aeronáutica**. *(Histórico: antes do A-23, o recruta Marinha via conteúdo de outra força — isso deixou de acontecer.)*
 
 **Passos:**
 1. Login de teste no app.

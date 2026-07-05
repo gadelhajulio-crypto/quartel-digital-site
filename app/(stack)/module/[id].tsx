@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useModuleLessons } from '../../../src/hooks/useModuleLessons';
 import { useModuleSimulado } from '../../../src/hooks/useQuizExecucao';
+import { useAuth } from '../../../src/context/AuthContext';
 import { LessonRow } from '../../../src/components/rows/LessonRow';
 import { InstitutionalEmpty } from '../../../src/components/InstitutionalEmpty';
 import { InstitutionalLoading } from '../../../src/components/InstitutionalLoading';
@@ -18,6 +19,9 @@ export default function ModuloAulasScreen() {
   const { lessons, loading } = useModuleLessons(id);
   // Simulado do módulo (CTA opcional). null quando o módulo não tem simulado.
   const { simulado } = useModuleSimulado(id);
+  // Força do recruta (fonte A-16) + força do módulo (das próprias lições) — filtra CTA.
+  const { profile } = useAuth();
+  const moduleForca = lessons[0]?.forca;
 
   if (loading) {
     return <InstitutionalLoading />;
@@ -38,7 +42,7 @@ export default function ModuloAulasScreen() {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          simulado ? (
+          simulado && moduleForca === profile?.forca ? (
             <TouchableOpacity
               style={styles.simuladoBtn}
               onPress={() => router.push(`/(stack)/simulado/${id}` as any)}
