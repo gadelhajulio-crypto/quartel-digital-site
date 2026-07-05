@@ -238,6 +238,15 @@ Os CTAs "Testar conhecimento" (lição) e "Fazer simulado do módulo" apareciam 
 
 > ⚠️ **Impacto no roteiro de teste manual (`docs/DESIGN_QUIZ_SIMULADO.md` §10):** com o filtro, o **usuário de teste atual (Marinha) NÃO vê mais os CTAs** de quiz/simulado — o conteúdo placeholder é só Ex/Aero. Para exercitar quiz/simulado agora é **necessário um usuário de teste de força Exército ou Aeronáutica**.
 
+### A-24 — `v_auth_app_config` nega SELECT a `anon` (leitura pré-login no boot) · a investigar
+Sintoma: `permission denied for view v_auth_app_config` no boot do app, **antes do login**. `AuthContext.tsx` (~linha 289) lê essa view na resolução de contrato (`[RCC_RESOLVE]`/`[H1_RCC_VERSION]`) para descobrir `auth_contract_version`.
+
+**Precisão (difere do A-15/A-19):** a view **TEM `GRANT SELECT TO authenticated`** (schema confirma) — então **pós-login funciona**. O `permission denied` é **pré-login**, quando o cliente roda como **`anon`** (sem sessão ainda), e a view **não tem `GRANT ... TO anon`**. Ou seja: não é grant de `authenticated` faltando (como A-15/A-19), é **grant de `anon` faltando** OU leitura acontecendo cedo demais (anon) para um dado que deveria ser lido pós-auth.
+
+**Não-bloqueante hoje:** o app tem fallback gracioso — `catch` loga `[AUTH] Falha ao ler auth_contract_version, fallback para RCC < 0.3` e segue com `isV3 = false`. Nenhum impacto funcional observado.
+
+**A investigar (quando retomar, diagnóstico antes de ação):** a view é **config estática/pública** (constantes: `requires_mfa_globally`, `inactivity_days_limit`, `lock_policy_enabled`, `auth_contract_version='RCC-0.5'`) — sem dado de usuário. Duas hipóteses: (a) deveria ser legível por `anon` (config pública de app) → falta `GRANT SELECT TO anon`; ou (b) a resolução RCC não deveria rodar pré-login (anon) → mover a leitura para pós-auth. Decidir qual antes de corrigir. Não corrigido agora — só documentado.
+
 ### A-5 — `catch` silenciosos
 Varredura em `src/` encontrou **catch verdadeiramente vazios apenas em `chatService.ts:357` e `:359`**, e ambos são **intencionais e defensáveis** (tentativa best-effort de extrair o body de erro da Edge Function antes de logar `message_send_failed` — o log ocorre logo depois; não há falha engolida sem telemetria). **Sem falha silenciosa crítica identificada** no caminho de chat. Demais `catch` (30 no total) logam ou propagam. Não auditados exaustivamente fora do fluxo de chat.
 
