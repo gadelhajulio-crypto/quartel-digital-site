@@ -247,6 +247,11 @@ Sintoma: `permission denied for view v_auth_app_config` no boot do app, **antes 
 
 **A investigar (quando retomar, diagnóstico antes de ação):** a view é **config estática/pública** (constantes: `requires_mfa_globally`, `inactivity_days_limit`, `lock_policy_enabled`, `auth_contract_version='RCC-0.5'`) — sem dado de usuário. Duas hipóteses: (a) deveria ser legível por `anon` (config pública de app) → falta `GRANT SELECT TO anon`; ou (b) a resolução RCC não deveria rodar pré-login (anon) → mover a leitura para pós-auth. Decidir qual antes de corrigir. Não corrigido agora — só documentado.
 
+### A-25 — (pendência PRÉ-LANÇAMENTO) Serviço de e-mail padrão do Supabase com rate limit baixo
+Confirmado ao vivo durante testes: **`email rate limit exceeded`**. O serviço de e-mail **padrão** do Supabase (usado por signup/confirmação/reset de senha) tem rate limit baixo, adequado só para desenvolvimento — **inviável para produção**.
+
+**Prioridade: pré-lançamento (perfil do A-17/A-21).** Sem usuários reais, não é urgente. Mas antes de qualquer divulgação pública é **obrigatório configurar SMTP customizado** (ex.: Resend/SendGrid/SES) no projeto Supabase — senão signups/confirmações/resets começam a falhar sob volume real. **Não é bug de código** (é config de infra do projeto). **Correção NÃO feita agora** — tarefa de infra própria. Só documentado.
+
 ### A-5 — `catch` silenciosos
 Varredura em `src/` encontrou **catch verdadeiramente vazios apenas em `chatService.ts:357` e `:359`**, e ambos são **intencionais e defensáveis** (tentativa best-effort de extrair o body de erro da Edge Function antes de logar `message_send_failed` — o log ocorre logo depois; não há falha engolida sem telemetria). **Sem falha silenciosa crítica identificada** no caminho de chat. Demais `catch` (30 no total) logam ou propagam. Não auditados exaustivamente fora do fluxo de chat.
 
