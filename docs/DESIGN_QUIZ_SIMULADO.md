@@ -98,3 +98,17 @@ Fórmula p/ recalibrar: `perguntas = lições×Q_lição + módulos×Q_simulado`
 **Descoberta durante a validação (A-22):** as views de execução C9 eram `security_invoker`, mas as tabelas `c9_*` têm RLS sem GRANT a `authenticated` — e **não devem** ganhar GRANT porque `c9_aula_quiz_alternativas.correta` é o gabarito. Padrão correto = view **`security definer`** (roda como owner, projeta sem `correta`), com GRANT só na view. Aplicado à `v_c9_simulado_execucao`. **Pendente (UI phase):** `v_c9_quiz_execucao`/`v_c9_quiz_resultado` (pré-existentes) têm o mesmo problema e precisam do mesmo tratamento antes da UI de quiz. Ver A-22.
 
 **Pendências abertas do design:** `xp_valor` real das lições Marinha (§8.2, A-19 bloqueia leitura direta); força-filtering na leitura de simulado (UI); cap diário de XP (não implementado — decisão foi só "1ª tentativa").
+
+## 10. Roteiro de teste manual (no app, login de teste)
+O teste end-to-end (responder → creditar XP) é **manual**, feito no app — nunca por chamada isolada de agente (mesma cautela do A-17). A partir daqui o dado de teste em prod é esperado; você decide se limpa depois.
+
+> ⚠️ **Nota (esperado NESTE teste, não é bug):** o usuário de teste é **Marinha**, mas o conteúdo placeholder de quiz/simulado só existe para **Exército/Aeronáutica**. Logo, durante este teste específico, um recruta Marinha verá/abrirá conteúdo de outra força para exercitar o pipeline. Isso é **intencional agora** — a filtragem por força na navegação de quiz/simulado é um refinamento de UI ainda pendente (ver "Pendências abertas"). Não confundir com bug.
+
+**Passos:**
+1. Login de teste no app.
+2. Navegar até uma **lição placeholder** (Exército ou Aeronáutica) → botão **"Testar conhecimento (+XP)"** no rodapé → responder as 2 perguntas → **Enviar** → conferir o resultado (acertos/% + XP).
+3. No **detalhe de um módulo placeholder** → botão **"Fazer simulado do módulo (+XP)"** → responder as 4 perguntas agregadas → conferir XP (maior que o quiz: base 40 + bônus).
+4. **Anti-farm:** refazer o mesmo quiz/simulado → confirmar que a tentativa é registrada mas **não credita XP de novo** (retorno `primeira_tentativa=false`, `xp_concedido=0`).
+5. **Ranking (A-21):** o XP grava em `xp_eventos` (visível no perfil/ledger), mas o **ranking só reflete após REFRESH das MVs** — que não tem schedule hoje. Então não estranhe se o ranking não mexer logo após o teste.
+
+**Se algo falhar** (erro no envio, XP não credita, etc.): capturar o retorno JSON da RPC `rpc_c9_submit_attempt` (`ok`/`reason`/`percentual`/`xp_concedido`) e reportar — o diagnóstico parte daí.
