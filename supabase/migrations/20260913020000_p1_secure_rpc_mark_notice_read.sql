@@ -21,6 +21,15 @@
 -- Em vez de remover, ela passa a validar p_recruta_id contra auth.uid() e
 -- lança exceção em caso de divergência — deixa de confiar cegamente no
 -- parâmetro, mas continua chamável por quem hoje a chama corretamente.
+--
+-- Privilégios: EXECUTE revogado explicitamente de PUBLIC, anon e service_role
+-- nas duas assinaturas, concedido só a authenticated. service_role não recebe
+-- EXECUTE de propósito — as duas funções resolvem identidade via auth.uid(),
+-- que é NULL em contexto service_role (sem JWT de usuário), e não há nenhum
+-- consumidor comprovado no repositório chamando esta RPC como service_role
+-- (toda escrita server-side em institutional_notice_reads, se existir,
+-- não passa por aqui). O owner (postgres) mantém controle total das duas
+-- funções independentemente de qualquer GRANT/REVOKE de EXECUTE.
 -- ==============================================================================
 
 -- ── 1. Assinatura antiga (2 parâmetros) — protegida, não removida ────────────
@@ -50,12 +59,11 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.rpc_mark_notice_read(uuid, uuid) FROM PUBLIC;
--- Nenhum GRANT direto a anon foi encontrado no schema para esta assinatura
--- (o acesso vinha só do default de PUBLIC, já revogado acima); o REVOKE
--- abaixo é incluído mesmo assim, de forma explícita e sem efeito colateral,
--- para não depender de inferência sobre o estado herdado de PUBLIC.
-REVOKE EXECUTE ON FUNCTION public.rpc_mark_notice_read(uuid, uuid) FROM anon;
+-- Nenhum GRANT direto a anon/service_role foi encontrado no schema para esta
+-- assinatura (o acesso vinha só do default de PUBLIC); os REVOKEs abaixo são
+-- incluídos mesmo assim, de forma explícita e sem efeito colateral, para não
+-- depender de inferência sobre o estado herdado de PUBLIC.
+REVOKE ALL PRIVILEGES ON FUNCTION public.rpc_mark_notice_read(uuid, uuid) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.rpc_mark_notice_read(uuid, uuid) TO authenticated;
 
 -- ── 2. Assinatura canônica (1 parâmetro) — a que o cliente já chama ──────────
@@ -86,13 +94,21 @@ END;
 $$;
 
 -- Obrigatório: CREATE/CREATE OR REPLACE FUNCTION concede EXECUTE a PUBLIC por
--- padrão. Revogar e conceder explicitamente só a authenticated.
-REVOKE EXECUTE ON FUNCTION public.rpc_mark_notice_read(uuid) FROM PUBLIC;
+-- padrão. Revogar de PUBLIC, anon e service_role; conceder explicitamente
+-- só a authenticated (mesma justificativa da assinatura de 2 parâmetros:
+-- depende de auth.uid(), sem consumidor comprovado como service_role).
+REVOKE ALL PRIVILEGES ON FUNCTION public.rpc_mark_notice_read(uuid) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.rpc_mark_notice_read(uuid) TO authenticated;
 
 -- ==============================================================================
--- ROLLBACK
+-- ROLLBACK HISTÓRICO (restaura o estado anterior a esta migration byte a byte)
 -- ==============================================================================
+-- ⚠️ REINTRODUZ A VULNERABILIDADE ORIGINAL (identidade confiada do cliente +
+-- EXECUTE aberto a PUBLIC). NÃO USAR EM PRODUÇÃO. Existe só como referência
+-- histórica de auditoria (o que a migration alterou, exatamente ao contrário).
+-- Se algo falhar após aplicar esta migration, use a "RESPOSTA OPERACIONAL
+-- SEGURA" abaixo (fail-closed) — nunca este bloco.
+--
 -- CREATE OR REPLACE FUNCTION public.rpc_mark_notice_read(p_notice_id uuid, p_recruta_id uuid)
 -- RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $$
 -- BEGIN
@@ -104,6 +120,19 @@ GRANT EXECUTE ON FUNCTION public.rpc_mark_notice_read(uuid) TO authenticated;
 -- $$;
 -- GRANT EXECUTE ON FUNCTION public.rpc_mark_notice_read(uuid, uuid) TO PUBLIC;
 -- DROP FUNCTION IF EXISTS public.rpc_mark_notice_read(uuid);
+--
+-- ==============================================================================
+-- RESPOSTA OPERACIONAL SEGURA (fail-closed — usar esta se algo falhar)
+-- ==============================================================================
+-- Se a assinatura de 1 parâmetro apresentar problema em produção: remover só
+-- ela, sem reabrir a de 2 parâmetros nem restaurar o corpo inseguro.
+--
+-- REVOKE ALL PRIVILEGES ON FUNCTION public.rpc_mark_notice_read(uuid)
+--   FROM PUBLIC, anon, authenticated, service_role;
+-- DROP FUNCTION public.rpc_mark_notice_read(uuid);
+--
+-- A assinatura de 2 parâmetros permanece com a validação de auth.uid() ativa
+-- (corpo seguro) — nunca reverter para o corpo original sem validação.
 
 -- ==============================================================================
 -- TESTES (não executados nesta migration; ver plano de teste em anexo à PR)
@@ -111,3 +140,10 @@ GRANT EXECUTE ON FUNCTION public.rpc_mark_notice_read(uuid) TO authenticated;
 -- Como recruta A: rpc_mark_notice_read(p_notice_id) -> true
 -- Como recruta A: rpc_mark_notice_read(p_notice_id, <recruta_id de B>) -> erro 42501
 -- Como anon (sem sessão): rpc_mark_notice_read(p_notice_id) -> erro de permissão (EXECUTE negado)
+-- Como service_role: rpc_mark_notice_read(p_notice_id) -> erro de permissão (EXECUTE negado,
+--   proposital — sem consumidor comprovado; auth.uid() seria NULL nesse contexto)
+--
+-- Privilégios efetivos esperados (has_function_privilege), para as duas assinaturas:
+--   anon           -> EXECUTE = false
+--   authenticated  -> EXECUTE = true
+--   service_role   -> EXECUTE = false
