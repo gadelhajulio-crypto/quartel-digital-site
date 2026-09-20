@@ -1,23 +1,29 @@
 schema_version: 1
 system:
-  key: quartel_digital
-  name: "Quartel Digital"
+  key: quartel_digital_site
+  name: "Quartel Digital — Site Institucional"
   repository: "gadelhajulio-crypto/quartel-digital-site"
 ownership:
-  owns_facts: []
+  owns_facts:
+    - public_institutional_site_content
   owns_decisions: []
-  does_not_own: []
+  does_not_own:
+    - learner_identity
+    - learner_progress
+    - product_entitlement
+    - academic_results
+    - rp_wide_customer_identity
 publishes: []
 consumes: []
 integration:
   rp_os:
-    mode: unresolved
+    mode: none_confirmed
     contracts: []
   rp_growth_intelligence:
-    mode: unresolved
+    mode: none_confirmed
     contracts: []
 change_control:
   architecture_registry: "gadelhajulio-crypto/rp-ecosystem-architecture"
   breaking_change_requires_registry_update: true
 notes:
-  - "Bootstrap manifest only. Ownership and contracts must be populated from repository evidence before integration."
+  - "This audited repository is only the institutional site. Locate the operational Quartel Digital platform repository/runtime before defining product contracts."
