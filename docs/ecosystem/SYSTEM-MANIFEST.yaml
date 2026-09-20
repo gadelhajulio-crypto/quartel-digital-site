@@ -1,0 +1,23 @@
+schema_version: 1
+system:
+  key: quartel_digital
+  name: "Quartel Digital"
+  repository: "gadelhajulio-crypto/quartel-digital-site"
+ownership:
+  owns_facts: []
+  owns_decisions: []
+  does_not_own: []
+publishes: []
+consumes: []
+integration:
+  rp_os:
+    mode: unresolved
+    contracts: []
+  rp_growth_intelligence:
+    mode: unresolved
+    contracts: []
+change_control:
+  architecture_registry: "gadelhajulio-crypto/rp-ecosystem-architecture"
+  breaking_change_requires_registry_update: true
+notes:
+  - "Bootstrap manifest only. Ownership and contracts must be populated from repository evidence before integration."
