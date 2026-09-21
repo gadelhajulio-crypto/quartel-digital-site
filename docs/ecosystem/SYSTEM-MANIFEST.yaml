@@ -1,0 +1,84 @@
+schema_version: 1
+system:
+  key: quartel_digital
+  name: "Quartel Digital — Learner Runtime Operacional"
+  repository: "gadelhajulio-crypto/quartel-digital-site"
+  branch: "mobile/main"
+ownership:
+  owns_facts:
+    - product_local_learner_identity
+    - learner_auth_link
+    - learner_force_assignment
+    - product_onboarding_state
+    - product_billing_state
+    - product_entitlement_access_projection
+    - learner_progress
+    - academic_attempts_results
+    - xp_gamification
+    - ranking_and_streak
+    - learner_communication_state
+    - product_local_events
+  owns_decisions:
+    - learner_runtime_access_enforcement
+    - product_local_academic_progression_rules
+  does_not_own:
+    - rp_wide_customer_identity
+    - consolidated_rp_lifecycle
+    - commercial_eligibility
+    - next_best_action
+    - ecosystem_send_authorization
+    - universal_commercial_consent
+    - canonical_curriculum_authoring
+sensitive_internal:
+  - detailed_academic_results
+  - individual_quiz_and_simulado_answers
+  - detailed_lesson_progress
+  - xp_event_ledger
+  - chat_messages_and_summaries
+  - ai_threads
+  - raw_gateway_payloads
+  - technical_provider_identifiers
+publishes:
+  - key: admin_sanitized_aggregate_views
+    status: implemented
+    mode: read_only
+    notes:
+      - "Current administrative views are sanitized/service-role-only and do not form a person-level Customer 360 contract."
+  - key: product_relationship_facts
+    status: candidate_not_contracted
+  - key: sanitized_engagement_telemetry
+    status: candidate_use_case_gated
+consumes: []
+integration:
+  rp_os:
+    mode: candidate_read_contracts_only
+    contracts: []
+    notes:
+      - "RP OS may consume approved minimized relationship/access projections without acquiring learner-runtime write authority."
+  rp_growth_intelligence:
+    mode: candidate_sanitized_telemetry_only
+    contracts: []
+    notes:
+      - "Growth may interpret approved sanitized facts/telemetry but does not own learner operational truth."
+lifecycle:
+  target_audience: "recruits already incorporated"
+  confirmed_incorporation_fact: "not_implemented_or_not_evidenced"
+  designated_to_serve_is_not_incorporated: true
+consent:
+  commercial_consent_authority: unresolved
+  whatsapp_commercial_send_authorization: unresolved
+  push_permission_is_not_commercial_consent: true
+curriculum:
+  curriculum_authoring_owner: unresolved
+  notes:
+    - "Operational QD contains modules/lessons/quizzes/reviews; RP OS also implements curriculum/content factory. Publication ownership/contract remains unresolved."
+commerce:
+  purchase_and_entitlement_are_distinct: true
+  refund_dispute_propagation: not_fully_evidenced
+change_control:
+  architecture_registry: "gadelhajulio-crypto/rp-ecosystem-architecture"
+  breaking_change_requires_registry_update: true
+notes:
+  - "This manifest applies to the operational learner runtime on branch mobile/main, not to the institutional site on main."
+  - "Product-local learner identity must not be promoted to canonical RP identity."
+  - "Detailed academic/communication data stays product-local by default."
