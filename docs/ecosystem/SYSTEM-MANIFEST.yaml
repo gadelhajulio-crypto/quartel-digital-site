@@ -69,9 +69,16 @@ consent:
   whatsapp_commercial_send_authorization: unresolved
   push_permission_is_not_commercial_consent: true
 curriculum:
-  curriculum_authoring_owner: unresolved
+  curriculum_authoring_owner: rp_os
+  runtime_projection_owner: quartel_digital
+  publication_contract: designed_not_implemented
+  runtime_sync: not_implemented
   notes:
-    - "Operational QD contains modules/lessons/quizzes/reviews; RP OS also implements curriculum/content factory. Publication ownership/contract remains unresolved."
+    - "RP OS owns canonical curriculum authoring, editorial governance, provenance/approval and curriculum versioning."
+    - "Quartel Digital maintains local runtime projections for learner delivery without becoming curriculum source of truth."
+    - "The OSQD publication boundary is designed but not yet implemented."
+    - "Runtime curriculum sync from RP OS to Quartel Digital is not implemented."
+    - "Publication must preserve local learner-state references and must not destructively replace identifiers referenced by progress, attempts, responses, XP or historical review."
 commerce:
   purchase_and_entitlement_are_distinct: true
   refund_dispute_propagation: not_fully_evidenced
