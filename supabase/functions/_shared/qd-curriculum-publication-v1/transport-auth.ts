@@ -24,8 +24,11 @@ export type TransportAuthReason =
   | "weak_runtime_secret";
 
 export class TransportAuthError extends Error {
-  constructor(public readonly reason: TransportAuthReason) {
+  readonly reason: TransportAuthReason;
+
+  constructor(reason: TransportAuthReason) {
     super(reason);
+    this.reason = reason;
     this.name = "TransportAuthError";
   }
 }
