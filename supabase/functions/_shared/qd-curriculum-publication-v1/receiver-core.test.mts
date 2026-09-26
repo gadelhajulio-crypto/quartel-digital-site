@@ -250,12 +250,11 @@ await check("newer version appends", async () => {
 
 await check("invalid contract input performs zero writes", async () => {
   const store = new MemoryStore();
-  await assert.rejects(() =>
-    stagePublicationEnvelopeV1(store, {
-      ...(await publication(0)),
-      contract_schema_version: 2,
-    }),
-  );
+  const invalid = {
+    ...(await publication(0)),
+    contract_schema_version: 2,
+  };
+  await assert.rejects(() => stagePublicationEnvelopeV1(store, invalid));
   assert.equal(store.artifacts.length, 0);
 });
 
@@ -287,11 +286,17 @@ await check("release id/hash conflict performs zero additional writes", async ()
   const store = new MemoryStore();
   const manifest = await releaseManifest();
   await stageReleaseManifestV1(store, manifest);
-  const conflicting = {
+
+  const conflictingWithoutHash = {
     ...manifest,
-    manifest_hash:
-      "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    release_code: "QD-MAR-2026.001-CONFLICT",
   };
+  delete (conflictingWithoutHash as Record<string, unknown>).manifest_hash;
+  const conflicting = {
+    ...conflictingWithoutHash,
+    manifest_hash: await computeReleaseManifestHash(conflictingWithoutHash),
+  };
+
   assert.deepEqual(await stageReleaseManifestV1(store, conflicting), {
     status: "CONFLICT",
     inserted: false,
