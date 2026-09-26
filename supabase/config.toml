@@ -22,3 +22,10 @@ entrypoint = "./functions/chat-notify/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/stripe-create-checkout-session/index.ts"
+
+# Gate 5C — repository-only shadow receiver. Intentionally disabled.
+# Custom HMAC authentication is used only if a later gate explicitly enables it.
+[functions.qd-curriculum-shadow-receiver]
+enabled = false
+verify_jwt = false
+entrypoint = "./functions/qd-curriculum-shadow-receiver/index.ts"
