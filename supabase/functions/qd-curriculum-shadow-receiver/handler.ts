@@ -25,11 +25,13 @@ export interface ShadowReceiverDependencies {
 }
 
 class RequestFailure extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly reason: string,
-  ) {
+  readonly status: number;
+  readonly reason: string;
+
+  constructor(status: number, reason: string) {
     super(reason);
+    this.status = status;
+    this.reason = reason;
   }
 }
 
