@@ -71,13 +71,22 @@ consent:
 curriculum:
   curriculum_authoring_owner: rp_os
   runtime_projection_owner: quartel_digital
-  publication_contract: designed_not_implemented
+  publication_contract: draft_not_activated
+  consumer_foundation: implemented_in_repo_not_activated
+  consumer_location: "supabase/functions/_shared/qd-curriculum-publication-v1"
+  source_mapping: schema_defined_not_populated
+  staging_migration: authored_not_applied
+  receiver: not_implemented
+  transport: not_selected
   runtime_sync: not_implemented
+  activation: not_implemented
   notes:
     - "RP OS owns canonical curriculum authoring, editorial governance, provenance/approval and curriculum versioning."
     - "Quartel Digital maintains local runtime projections for learner delivery without becoming curriculum source of truth."
-    - "The OSQD publication boundary is designed but not yet implemented."
-    - "Runtime curriculum sync from RP OS to Quartel Digital is not implemented."
+    - "Gate 5A adds only a server-side conformance mirror plus explicit source-to-local mapping and append-only staging schema foundation."
+    - "The Gate 5A migration is repository-only and has not been applied to a remote database."
+    - "No receiver, transport, automatic sync, activation or learner-visible publication is implemented."
+    - "Source mapping preserves existing QD local UUIDs; title/name heuristics are forbidden."
     - "Publication must preserve local learner-state references and must not destructively replace identifiers referenced by progress, attempts, responses, XP or historical review."
 commerce:
   purchase_and_entitlement_are_distinct: true
