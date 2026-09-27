@@ -72,34 +72,33 @@ curriculum:
   curriculum_authoring_owner: rp_os
   runtime_projection_owner: quartel_digital
   publication_contract: draft_not_activated
-  consumer_foundation: implemented_in_repo_not_activated
+  consumer_foundation: merged_main_not_activated
   consumer_location: "supabase/functions/_shared/qd-curriculum-publication-v1"
   source_mapping: schema_defined_not_populated
   staging_migration: authored_not_applied
-  shadow_ingestion_core: implemented_in_repo_not_activated
-  shadow_staging_adapter: implemented_in_repo_not_activated
+  shadow_ingestion_core: merged_main_not_activated
+  shadow_staging_adapter: merged_main_not_activated
   atomic_release_staging_rpc: authored_not_applied
-  receiver_endpoint: implemented_in_repo_disabled_not_activated
+  receiver_endpoint: merged_main_disabled_not_deployed_not_activated
   receiver_config: disabled_by_default
-  transport: proposed_https_post_hmac_not_accepted
-  transport_auth: proposed_adr_007_not_accepted
+  receiver_deployment: not_deployed
+  transport: accepted_https_post_integration_scoped_hmac_sha256
+  transport_auth: adr_007_accepted
   transport_nonce_migration: authored_not_applied
-  receiver_secret_provisioning: not_done
+  receiver_secret_provisioning: not_provisioned
   producer_signing: not_implemented
   runtime_sync: not_implemented
   activation: not_implemented
   notes:
     - "RP OS owns canonical curriculum authoring, editorial governance, provenance/approval and curriculum versioning."
     - "Quartel Digital maintains local runtime projections for learner delivery without becoming curriculum source of truth."
-    - "Gate 5A adds only a server-side conformance mirror plus explicit source-to-local mapping and append-only staging schema foundation."
-    - "Gate 5B adds only a server-side shadow-ingestion core and injected staging adapter; it exposes no network endpoint."
-    - "Release and release-membership staging is designed as one atomic service-role-only RPC."
-    - "Gate 5A/5B migrations are repository-only and have not been applied to a remote database."
-    - "Gate 5C adds a disabled-by-default HTTP shadow receiver with proposed HMAC-SHA256 transport authentication and atomic nonce anti-replay."
-    - "The receiver is not activated: Supabase function config is disabled, runtime enable flag is absent by default, no integration secret is provisioned, and producer signing is not implemented."
-    - "ADR-007 for transport/auth remains proposed_not_accepted in the Architecture Registry; Gate 5C code is reviewable implementation evidence, not accepted runtime authorization."
-    - "No automatic sync, release activation or learner-visible publication is implemented."
-    - "Source mapping preserves existing QD local UUIDs; title/name heuristics are forbidden."
+    - "Gate 5A consumer foundation is merged in mobile/main and remains not activated; its staging/mapping migration is authored but not applied."
+    - "Gate 5B shadow-ingestion core and staging adapter are merged in mobile/main and remain not activated; the atomic release-staging RPC is authored but not applied."
+    - "Gate 5C shadow receiver is merged in mobile/main but remains disabled, not deployed and not activated."
+    - "ADR-007 is accepted for this RP OS -> Quartel Digital curriculum integration and defines HTTPS POST with integration-scoped HMAC-SHA256; it is not an ecosystem-wide S2S standard."
+    - "No receiver integration secret has been provisioned and producer signing is not implemented."
+    - "No automatic sync, runtime traffic, release activation or learner-visible publication is implemented."
+    - "Source mapping preserves existing QD local UUIDs; title/name heuristics are forbidden, and mappings are not populated yet."
     - "Publication must preserve local learner-state references and must not destructively replace identifiers referenced by progress, attempts, responses, XP or historical review."
 commerce:
   purchase_and_entitlement_are_distinct: true
