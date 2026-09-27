@@ -79,9 +79,13 @@ curriculum:
   shadow_ingestion_core: implemented_in_repo_not_activated
   shadow_staging_adapter: implemented_in_repo_not_activated
   atomic_release_staging_rpc: authored_not_applied
-  receiver_endpoint: not_implemented
-  transport: not_selected
-  transport_auth: decision_required
+  receiver_endpoint: implemented_in_repo_disabled_not_activated
+  receiver_config: disabled_by_default
+  transport: proposed_https_post_hmac_not_accepted
+  transport_auth: proposed_adr_007_not_accepted
+  transport_nonce_migration: authored_not_applied
+  receiver_secret_provisioning: not_done
+  producer_signing: not_implemented
   runtime_sync: not_implemented
   activation: not_implemented
   notes:
@@ -91,7 +95,10 @@ curriculum:
     - "Gate 5B adds only a server-side shadow-ingestion core and injected staging adapter; it exposes no network endpoint."
     - "Release and release-membership staging is designed as one atomic service-role-only RPC."
     - "Gate 5A/5B migrations are repository-only and have not been applied to a remote database."
-    - "No receiver endpoint, transport, producer authentication, automatic sync, activation or learner-visible publication is implemented."
+    - "Gate 5C adds a disabled-by-default HTTP shadow receiver with proposed HMAC-SHA256 transport authentication and atomic nonce anti-replay."
+    - "The receiver is not activated: Supabase function config is disabled, runtime enable flag is absent by default, no integration secret is provisioned, and producer signing is not implemented."
+    - "ADR-007 for transport/auth remains proposed_not_accepted in the Architecture Registry; Gate 5C code is reviewable implementation evidence, not accepted runtime authorization."
+    - "No automatic sync, release activation or learner-visible publication is implemented."
     - "Source mapping preserves existing QD local UUIDs; title/name heuristics are forbidden."
     - "Publication must preserve local learner-state references and must not destructively replace identifiers referenced by progress, attempts, responses, XP or historical review."
 commerce:
