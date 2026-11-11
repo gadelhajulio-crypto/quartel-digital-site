@@ -1,0 +1,16 @@
+QUARTEL DIGITAL — IDENTIDADE VISUAL V1.0 — CANDIDATA A HOMOLOGAÇÃO
+
+AUDITORIA TÉCNICA (10/11/2026)
+- 12 SVGs vetoriais sem imagens incorporadas; 12 PNGs correspondentes.
+- Re-renderização de cada SVG em tamanho nativo: correspondência pixel a pixel exata com o PNG correspondente (diferença zero).
+- Transparência confirmada em 03, 04, 05, 08 e 10.
+- Favicons PNG 16, 32, 48, 64, 180, 192, 512 e 1024 px.
+- favicon.ico multirresolução gerado para utilização em sites.
+
+PENDÊNCIAS DE HOMOLOGAÇÃO
+1. A comparação com a arte V6 aprovada não comprovou igualdade absoluta de contornos; mudanças de escala e posição anteriores não corrigem diferenças internas.
+2. Aprovação visual humana da simplificação do favicon em 16 e 32 px.
+3. Testes em interfaces reais (browser/app) e, se necessário, revisão de formas internas.
+
+Os SVGs e PNGs originais do pacote recebido foram copiados sem modificação.
+NÃO declarar a identidade visual homologada até concluir essas validações.

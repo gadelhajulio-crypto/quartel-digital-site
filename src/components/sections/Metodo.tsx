@@ -54,7 +54,7 @@ export function Metodo() {
               transition={{ duration: 0.6 }}
               className="mb-12"
             >
-              <span className="text-xs font-semibold text-[#7ABF3C] tracking-[0.3em] uppercase">
+              <span className="text-xs font-semibold text-[#B89B5E] tracking-[0.3em] uppercase">
                 Passo a Passo
               </span>
               <h2 className="mt-4 text-4xl md:text-5xl font-black text-[#111111] leading-tight">
@@ -66,7 +66,7 @@ export function Metodo() {
             </motion.div>
 
             <div className="relative">
-              <div className="absolute left-[27px] top-3 bottom-3 w-px bg-gradient-to-b from-[#7ABF3C]/30 via-[#7ABF3C]/15 to-transparent hidden md:block" />
+              <div className="absolute left-[27px] top-3 bottom-3 w-px bg-gradient-to-b from-[#B89B5E]/30 via-[#B89B5E]/15 to-transparent hidden md:block" />
               <div className="space-y-6">
                 {etapas.map((etapa, i) => (
                   <motion.div
@@ -76,8 +76,8 @@ export function Metodo() {
                     transition={{ delay: 0.1 + i * 0.1, duration: 0.5, ease: "easeOut" }}
                     className="flex gap-6 items-start group"
                   >
-                    <div className="flex-shrink-0 w-14 h-14 rounded-xl border border-gray-200 bg-white shadow-sm flex items-center justify-center group-hover:border-[#7ABF3C]/40 group-hover:shadow-md transition-all duration-300 relative z-10">
-                      <span className="text-sm font-black text-[#7ABF3C]/60 group-hover:text-[#7ABF3C] transition-colors font-mono">
+                    <div className="flex-shrink-0 w-14 h-14 rounded-xl border border-gray-200 bg-white shadow-sm flex items-center justify-center group-hover:border-[#B89B5E]/40 group-hover:shadow-md transition-all duration-300 relative z-10">
+                      <span className="text-sm font-black text-[#B89B5E]/60 group-hover:text-[#B89B5E] transition-colors font-mono">
                         {etapa.number}
                       </span>
                     </div>

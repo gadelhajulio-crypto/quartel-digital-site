@@ -1,0 +1,4 @@
+Favicons corrigidos: derivados diretamente do SVG QD_09_simbolo_verde.svg.
+Mira circular, quatro marcadores retangulares e check dourado preservados.
+A renderizacao 16px e naturalmente limitada, mas nao foi substituida por pontos.
+Aprovacao visual do usuario pendente. Os 12 logos originais nao foram alterados.

@@ -64,7 +64,7 @@ export function Diferenciais() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <span className="text-xs font-semibold text-[#7ABF3C] tracking-[0.3em] uppercase">
+          <span className="text-xs font-semibold text-[#B89B5E] tracking-[0.3em] uppercase">
             Por Que Escolher
           </span>
           <h2 className="mt-4 text-4xl md:text-5xl font-black text-white leading-tight">
@@ -86,9 +86,9 @@ export function Diferenciais() {
                 animate={isInView ? { opacity: 1, y: 0 } : {}}
                 transition={{ delay: i * 0.1, duration: 0.6, ease: "easeOut" }}
               >
-                <Card className="h-full bg-[#121212] border-[#222222] hover:border-[#7ABF3C]/25 transition-all duration-300 group rounded-xl">
+                <Card className="h-full bg-[#121212] border-[#222222] hover:border-[#B89B5E]/25 transition-all duration-300 group rounded-xl">
                   <CardContent className="pt-6 flex gap-5">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-xl border border-[#222222] bg-[#0B0B0B] flex items-center justify-center text-[#7ABF3C]/40 group-hover:text-[#7ABF3C] group-hover:border-[#7ABF3C]/30 transition-all duration-300">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-xl border border-[#222222] bg-[#0B0B0B] flex items-center justify-center text-[#B89B5E]/40 group-hover:text-[#B89B5E] group-hover:border-[#B89B5E]/30 transition-all duration-300">
                       <Icon className="w-5 h-5" strokeWidth={1.5} />
                     </div>
                     <div>

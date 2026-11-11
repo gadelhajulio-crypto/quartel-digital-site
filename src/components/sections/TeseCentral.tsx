@@ -15,7 +15,7 @@ export function TeseCentral() {
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.65 }}
         >
-          <span className="text-xs font-semibold text-[#7ABF3C] tracking-[0.3em] uppercase">
+          <span className="text-xs font-semibold text-[#B89B5E] tracking-[0.3em] uppercase">
             A Questão Real
           </span>
           <h2 className="mt-6 text-4xl md:text-5xl font-black text-[#111111] leading-tight">

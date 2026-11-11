@@ -52,7 +52,7 @@ export function Solucao() {
             <div className="flex items-center gap-3 mb-6">
               <Badge
                 variant="outline"
-                className="border-[#7ABF3C]/30 text-[#7ABF3C] bg-[#7ABF3C]/5 text-xs tracking-widest uppercase"
+                className="border-[#B89B5E]/30 text-[#B89B5E] bg-[#B89B5E]/5 text-xs tracking-widest uppercase"
               >
                 A Solução
               </Badge>
@@ -88,9 +88,9 @@ export function Solucao() {
                 animate={isInView ? { opacity: 1, y: 0 } : {}}
                 transition={{ delay: i * 0.1, duration: 0.55, ease: "easeOut" }}
               >
-                <Card className="h-full bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-[#7ABF3C]/30 transition-all duration-300 group rounded-xl">
+                <Card className="h-full bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-[#B89B5E]/30 transition-all duration-300 group rounded-xl">
                   <CardContent className="pt-6 space-y-4">
-                    <div className="w-10 h-10 rounded-xl border border-[#7ABF3C]/20 bg-[#7ABF3C]/5 flex items-center justify-center text-[#7ABF3C]/50 group-hover:text-[#7ABF3C] group-hover:border-[#7ABF3C]/40 transition-all duration-300">
+                    <div className="w-10 h-10 rounded-xl border border-[#B89B5E]/20 bg-[#B89B5E]/5 flex items-center justify-center text-[#B89B5E]/50 group-hover:text-[#B89B5E] group-hover:border-[#B89B5E]/40 transition-all duration-300">
                       <Icon className="w-5 h-5" strokeWidth={1.5} />
                     </div>
                     <h3 className="font-bold text-[#111111] text-sm">{pilar.titulo}</h3>

@@ -40,23 +40,14 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <a href="#" className="flex items-center gap-3">
-          <div className="bg-white rounded-md p-1 flex items-center justify-center">
-            <Image
-              src="/assets/logo/logoqd.png"
-              alt="Quartel Digital"
-              width={36}
-              height={36}
-              className="object-contain"
-            />
-          </div>
-          <div className="flex flex-col leading-tight">
-            <span className="font-bold text-white tracking-wide text-sm uppercase leading-none">
-              Quartel Digital
-            </span>
-            <span className="text-[10px] text-[#7ABF3C] tracking-widest leading-none mt-0.5">
-              Recruta Padrão
-            </span>
-          </div>
+          <Image
+            src="/assets/brand/quartel-digital-v1/QD_12_horizontal_grafite.svg"
+            alt="Quartel Digital"
+            width={2400}
+            height={900}
+            className="h-auto w-40 shrink-0"
+            unoptimized
+          />
         </a>
 
         {/* Desktop nav */}
@@ -65,7 +56,7 @@ export function Navbar() {
             <a
               key={link.href}
               href={link.href}
-              className="text-xs font-medium text-gray-400 hover:text-[#7ABF3C] transition-colors duration-200 tracking-wide uppercase"
+              className="text-xs font-medium text-gray-400 hover:text-[#B89B5E] transition-colors duration-200 tracking-wide uppercase"
             >
               {link.label}
             </a>
@@ -78,7 +69,7 @@ export function Navbar() {
             href="#forcas"
             className={cn(
               buttonVariants({ variant: "outline", size: "sm" }),
-              "border-[#7ABF3C]/40 text-[#7ABF3C] hover:bg-[#7ABF3C] hover:text-white bg-transparent font-semibold transition-all duration-200"
+              "border-[#B89B5E]/40 text-[#B89B5E] hover:bg-[#B89B5E] hover:text-[#102820] bg-transparent font-semibold transition-all duration-200"
             )}
           >
             Começar preparação
@@ -107,7 +98,7 @@ export function Navbar() {
               key={link.href}
               href={link.href}
               onClick={() => setIsMenuOpen(false)}
-              className="text-sm text-gray-300 hover:text-[#7ABF3C] transition-colors tracking-wide"
+              className="text-sm text-gray-300 hover:text-[#B89B5E] transition-colors tracking-wide"
             >
               {link.label}
             </a>
@@ -118,7 +109,7 @@ export function Navbar() {
             onClick={() => setIsMenuOpen(false)}
             className={cn(
               buttonVariants({ variant: "outline" }),
-              "border-[#7ABF3C]/40 text-[#7ABF3C] hover:bg-[#7ABF3C] hover:text-white bg-transparent w-full justify-center"
+              "border-[#B89B5E]/40 text-[#B89B5E] hover:bg-[#B89B5E] hover:text-[#102820] bg-transparent w-full justify-center"
             )}
           >
             Começar preparação

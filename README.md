@@ -1,11 +1,11 @@
 # Quartel Digital — Site Institucional
 
 Site institucional público da plataforma educacional Quartel Digital.
-Desenvolvido com Next.js 15, TypeScript, Tailwind CSS e Framer Motion.
+Desenvolvido com Next.js 16.2.4, TypeScript, Tailwind CSS e Framer Motion.
 
 ## Stack
 
-- **Framework**: Next.js 15 (App Router)
+- **Framework**: Next.js 16.2.4 (App Router)
 - **Linguagem**: TypeScript
 - **Estilo**: Tailwind CSS v4
 - **Animações**: Framer Motion
@@ -64,8 +64,9 @@ src/
 ## Design
 
 - Tema escuro (`#080810` como base)
-- Paleta dourada (`#c9a84c`) como accent
+- Paleta dourada V1.0 (`#B89B5E`) como accent
 - Tipografia Inter
+- Marca: [auditoria V1.0 e homologação](docs/brand/quartel-digital-v1/AUDIT.md)
 - Animações de entrada com Framer Motion (fade + slide)
 - Layout responsivo mobile-first
 

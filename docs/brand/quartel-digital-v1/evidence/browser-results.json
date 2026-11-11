@@ -1,0 +1,126 @@
+{
+  "results": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 1000,
+      "overflow": false,
+      "logos": [
+        {
+          "src": "/assets/brand/quartel-digital-v1/QD_12_horizontal_grafite.svg",
+          "loaded": true
+        },
+        {
+          "src": "/assets/brand/quartel-digital-v1/QD_12_horizontal_grafite.svg",
+          "loaded": true
+        }
+      ],
+      "errors": [],
+      "accent": "rgb(184, 155, 94)"
+    },
+    {
+      "name": "tablet",
+      "width": 768,
+      "height": 1024,
+      "overflow": false,
+      "logos": [
+        {
+          "src": "/assets/brand/quartel-digital-v1/QD_12_horizontal_grafite.svg",
+          "loaded": true
+        },
+        {
+          "src": "/assets/brand/quartel-digital-v1/QD_12_horizontal_grafite.svg",
+          "loaded": true
+        }
+      ],
+      "errors": [],
+      "accent": "rgb(184, 155, 94)"
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "height": 844,
+      "overflow": false,
+      "logos": [
+        {
+          "src": "/assets/brand/quartel-digital-v1/QD_12_horizontal_grafite.svg",
+          "loaded": true
+        },
+        {
+          "src": "/assets/brand/quartel-digital-v1/QD_12_horizontal_grafite.svg",
+          "loaded": true
+        }
+      ],
+      "errors": [],
+      "accent": "rgb(184, 155, 94)"
+    },
+    {
+      "name": "small-mobile",
+      "width": 320,
+      "height": 720,
+      "overflow": false,
+      "logos": [
+        {
+          "src": "/assets/brand/quartel-digital-v1/QD_12_horizontal_grafite.svg",
+          "loaded": true
+        },
+        {
+          "src": "/assets/brand/quartel-digital-v1/QD_12_horizontal_grafite.svg",
+          "loaded": true
+        }
+      ],
+      "errors": [],
+      "accent": "rgb(184, 155, 94)"
+    }
+  ],
+  "http": [
+    {
+      "url": "/manifest.webmanifest",
+      "status": 200,
+      "type": "application/manifest+json",
+      "cache": "public, max-age=0, must-revalidate"
+    },
+    {
+      "url": "/favicon.ico?favicon.0etsnrcsspp7..ico",
+      "status": 200,
+      "type": "image/x-icon",
+      "cache": "public, max-age=0, must-revalidate"
+    },
+    {
+      "url": "/assets/brand/quartel-digital-v1/QD_favicon_mira_original.svg",
+      "status": 200,
+      "type": "image/svg+xml",
+      "cache": "public, max-age=0"
+    },
+    {
+      "url": "/assets/brand/quartel-digital-v1/QD_favicon_mira_16.png",
+      "status": 200,
+      "type": "image/png",
+      "cache": "public, max-age=0"
+    },
+    {
+      "url": "/assets/brand/quartel-digital-v1/QD_favicon_mira_32.png",
+      "status": 200,
+      "type": "image/png",
+      "cache": "public, max-age=0"
+    },
+    {
+      "url": "/assets/brand/quartel-digital-v1/QD_favicon_mira_180.png",
+      "status": 200,
+      "type": "image/png",
+      "cache": "public, max-age=0"
+    },
+    {
+      "url": "/assets/brand/quartel-digital-v1/QD_favicon_mira_192.png",
+      "status": 200,
+      "type": "image/png",
+      "cache": "public, max-age=0"
+    },
+    {
+      "url": "/assets/brand/quartel-digital-v1/QD_favicon_mira_512.png",
+      "status": 200,
+      "type": "image/png",
+      "cache": "public, max-age=0"
+    }
+  ]
+}

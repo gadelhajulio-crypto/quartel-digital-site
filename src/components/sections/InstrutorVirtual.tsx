@@ -42,7 +42,7 @@ export function InstrutorVirtual() {
             animate={isInView ? { opacity: 1, x: 0 } : {}}
             transition={{ duration: 0.6 }}
           >
-            <span className="text-xs font-semibold text-[#7ABF3C] tracking-[0.3em] uppercase">
+            <span className="text-xs font-semibold text-[#B89B5E] tracking-[0.3em] uppercase">
               Suporte ao Estudo
             </span>
             <h2 className="mt-4 text-4xl md:text-5xl font-black text-white leading-tight">
@@ -65,7 +65,7 @@ export function InstrutorVirtual() {
                     transition={{ delay: 0.2 + i * 0.1, duration: 0.5 }}
                     className="flex items-start gap-4"
                   >
-                    <div className="flex-shrink-0 w-9 h-9 rounded-lg border border-[#7ABF3C]/25 bg-[#7ABF3C]/5 flex items-center justify-center text-[#7ABF3C]/60 mt-0.5">
+                    <div className="flex-shrink-0 w-9 h-9 rounded-lg border border-[#B89B5E]/25 bg-[#B89B5E]/5 flex items-center justify-center text-[#B89B5E]/60 mt-0.5">
                       <Icon className="w-4 h-4" strokeWidth={1.5} />
                     </div>
                     <div>
@@ -98,11 +98,11 @@ export function InstrutorVirtual() {
             transition={{ duration: 0.6, delay: 0.15 }}
             className="flex justify-center lg:justify-end"
           >
-            <div className="w-full max-w-xs aspect-[9/16] rounded-3xl border border-[#222222] bg-[#121212] flex flex-col overflow-hidden shadow-[0_0_60px_rgba(122,191,60,0.05)]">
+            <div className="w-full max-w-xs aspect-[9/16] rounded-3xl border border-[#222222] bg-[#121212] flex flex-col overflow-hidden shadow-[0_0_60px_rgba(184,155,94,0.05)]">
               {/* Phone header */}
               <div className="flex items-center gap-2.5 px-5 py-4 border-b border-[#222222]">
-                <div className="w-8 h-8 rounded-full bg-[#7ABF3C]/10 border border-[#7ABF3C]/20 flex items-center justify-center">
-                  <MessageSquare className="w-4 h-4 text-[#7ABF3C]/60" strokeWidth={1.5} />
+                <div className="w-8 h-8 rounded-full bg-[#B89B5E]/10 border border-[#B89B5E]/20 flex items-center justify-center">
+                  <MessageSquare className="w-4 h-4 text-[#B89B5E]/60" strokeWidth={1.5} />
                 </div>
                 <div>
                   <p className="text-xs font-bold text-white">Instrutor Virtual</p>
@@ -120,7 +120,7 @@ export function InstrutorVirtual() {
                   </div>
                 </div>
                 <div className="flex justify-end">
-                  <div className="max-w-[80%] bg-[#7ABF3C]/10 border border-[#7ABF3C]/20 rounded-2xl rounded-tr-sm px-3.5 py-2.5">
+                  <div className="max-w-[80%] bg-[#B89B5E]/10 border border-[#B89B5E]/20 rounded-2xl rounded-tr-sm px-3.5 py-2.5">
                     <p className="text-xs text-gray-300 leading-relaxed">
                       Não entendi a parte de ontem.
                     </p>
@@ -134,7 +134,7 @@ export function InstrutorVirtual() {
                   </div>
                 </div>
                 <div className="flex justify-end">
-                  <div className="max-w-[80%] bg-[#7ABF3C]/10 border border-[#7ABF3C]/20 rounded-2xl rounded-tr-sm px-3.5 py-2.5">
+                  <div className="max-w-[80%] bg-[#B89B5E]/10 border border-[#B89B5E]/20 rounded-2xl rounded-tr-sm px-3.5 py-2.5">
                     <p className="text-xs text-gray-300 leading-relaxed">
                       Pelo início do módulo.
                     </p>

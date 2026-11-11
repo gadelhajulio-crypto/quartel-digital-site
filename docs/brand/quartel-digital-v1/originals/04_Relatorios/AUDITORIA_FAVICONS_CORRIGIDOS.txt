@@ -1,0 +1,11 @@
+QUARTEL DIGITAL — AUDITORIA DOS FAVICONS CORRIGIDOS
+
+Resultado: APTOS COMO CANDIDATOS PARA HOMOLOGACAO VISUAL.
+- ZIP de origem dos favicons: integridade sem erros.
+- 10 PNGs com dimensoes nominais corretas (16, 32, 48, 64, 128, 180, 192, 256, 512, 1024).
+- Mira circular, quatro marcadores retangulares e check dourado presentes na versao grande e na previa.
+- Em 16 px, detalhes sao limitados pela resolucao.
+- Os favicons correspondem visualmente a matriz vetorial candidata, que possui pequenas diferencas em relacao a V6 original.
+- Os 12 SVGs e 12 PNGs do pacote anterior foram preservados sem alteracoes.
+- Os favicons simplificados anteriores foram excluidos deste pacote para evitar uso acidental.
+- Ainda requer aprovacao visual do responsavel antes da denominacao OFICIAL V1.0.

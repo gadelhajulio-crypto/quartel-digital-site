@@ -70,7 +70,7 @@ export function EscolhaSuaForca() {
         >
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
             <div>
-              <span className="text-xs font-semibold text-[#7ABF3C] tracking-[0.3em] uppercase">
+              <span className="text-xs font-semibold text-[#B89B5E] tracking-[0.3em] uppercase">
                 Trilhas por Força
               </span>
               <h2 className="mt-4 text-4xl md:text-5xl font-black text-[#111111] leading-tight">
