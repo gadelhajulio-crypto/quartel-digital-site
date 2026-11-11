@@ -19,8 +19,8 @@ export function Hero() {
         className="absolute inset-0 opacity-[0.03]"
         style={{
           backgroundImage: `
-            linear-gradient(to right, #7ABF3C 1px, transparent 1px),
-            linear-gradient(to bottom, #7ABF3C 1px, transparent 1px)
+            linear-gradient(to right, #B89B5E 1px, transparent 1px),
+            linear-gradient(to bottom, #B89B5E 1px, transparent 1px)
           `,
           backgroundSize: "56px 56px",
         }}
@@ -29,7 +29,7 @@ export function Hero() {
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div
           className="w-[700px] h-[500px] rounded-full blur-3xl"
-          style={{ background: "radial-gradient(ellipse, rgba(122,191,60,0.07) 0%, transparent 70%)" }}
+          style={{ background: "radial-gradient(ellipse, rgba(184,155,94,0.07) 0%, transparent 70%)" }}
         />
       </div>
 
@@ -37,9 +37,9 @@ export function Hero() {
       <motion.div {...anim(0)} className="mb-8">
         <Badge
           variant="outline"
-          className="border-[#7ABF3C]/40 bg-[#7ABF3C]/5 text-[#7ABF3C] px-4 py-1.5 text-xs tracking-widest uppercase rounded-full font-medium"
+          className="border-[#B89B5E]/40 bg-[#B89B5E]/5 text-[#B89B5E] px-4 py-1.5 text-xs tracking-widest uppercase rounded-full font-medium"
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-[#7ABF3C] animate-pulse mr-2 inline-block" />
+          <span className="w-1.5 h-1.5 rounded-full bg-[#B89B5E] animate-pulse mr-2 inline-block" />
           Sistema de Excelência Acadêmica Militar · Recruta Padrão
         </Badge>
       </motion.div>
@@ -72,7 +72,7 @@ export function Hero() {
           href="#forcas"
           className={cn(
             buttonVariants({ size: "lg" }),
-            "gold-gradient-bg text-white font-bold tracking-wide hover:opacity-90 transition-opacity px-8 shadow-[0_0_30px_rgba(122,191,60,0.25)]"
+            "gold-gradient-bg text-[#102820] font-bold tracking-wide hover:opacity-90 transition-opacity px-8 shadow-[0_0_30px_rgba(184,155,94,0.25)]"
           )}
         >
           Começar minha preparação
@@ -81,7 +81,7 @@ export function Hero() {
           href="#como-funciona"
           className={cn(
             buttonVariants({ variant: "outline", size: "lg" }),
-            "border-[#222222] text-gray-300 hover:border-[#7ABF3C]/50 hover:text-[#7ABF3C] bg-transparent px-8"
+            "border-[#222222] text-gray-300 hover:border-[#B89B5E]/50 hover:text-[#B89B5E] bg-transparent px-8"
           )}
         >
           Ver como funciona
@@ -126,7 +126,7 @@ export function Hero() {
         <motion.div
           animate={{ y: [0, 7, 0] }}
           transition={{ repeat: Infinity, duration: 1.6 }}
-          className="w-px h-10 bg-gradient-to-b from-[#7ABF3C]/40 to-transparent"
+          className="w-px h-10 bg-gradient-to-b from-[#B89B5E]/40 to-transparent"
         />
       </motion.div>
     </section>

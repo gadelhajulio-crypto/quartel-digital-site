@@ -5,9 +5,9 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --accent: #7ABF3C;
-  --accent-light: #9DD95C;
-  --accent-dark: #5a9a28;
+  --accent: #B89B5E;
+  --accent-light: #C4C8C7;
+  --accent-dark: #B89B5E;
   --dark-bg: #0B0B0B;
   --dark-card: #121212;
   --dark-border: #222222;
@@ -65,8 +65,8 @@ body {
 }
 
 ::selection {
-  background-color: #5a9a28;
-  color: #fff;
+  background-color: #B89B5E;
+  color: #102820;
 }
 
 ::-webkit-scrollbar {
@@ -78,20 +78,20 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #5a9a28;
+  background: #B89B5E;
   border-radius: 3px;
 }
 
-/* Accent gradient (replaces gold-gradient) */
+/* Approved V1.0 gold; keep legacy class names for existing sections. */
 .gold-gradient {
-  background: linear-gradient(135deg, #9DD95C 0%, #7ABF3C 50%, #5a9a28 100%);
+  background: #B89B5E;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .gold-gradient-bg {
-  background: linear-gradient(135deg, #9DD95C 0%, #7ABF3C 50%, #5a9a28 100%);
+  background: #B89B5E;
 }
 
 @theme inline {

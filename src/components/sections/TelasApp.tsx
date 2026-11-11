@@ -25,7 +25,7 @@ export function TelasApp() {
           transition={{ duration: 0.6 }}
           className="text-center mb-14"
         >
-          <span className="text-xs font-semibold text-[#7ABF3C] tracking-[0.3em] uppercase">
+          <span className="text-xs font-semibold text-[#B89B5E] tracking-[0.3em] uppercase">
             O Aplicativo
           </span>
           <h2 className="mt-4 text-4xl md:text-5xl font-black text-[#111111] leading-tight">

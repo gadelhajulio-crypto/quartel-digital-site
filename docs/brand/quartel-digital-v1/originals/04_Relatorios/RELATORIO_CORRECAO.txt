@@ -1,0 +1,16 @@
+CORRECAO LIMITADA: alinhamento e escala do enquadramento dos SVGs com as V6 PNG.
+Os caminhos internos permanecem os mesmos; NAO comprova equivalencia geometrica pixel a pixel.
+Favicon simplificado: variante desenhada especificamente para tamanhos pequenos; requer aprovacao visual.
+
+QD_01_vertical_verde.svg: bbox vetor (247, 304, 1809, 1803), bbox V6 (307, 335, 1740, 1712), escala 0.9174; alinhamento de enquadramento, NÃO equivalência de contornos
+QD_02_vertical_claro.svg: bbox vetor (247, 304, 1809, 1803), bbox V6 (307, 335, 1740, 1712), escala 0.9174; alinhamento de enquadramento, NÃO equivalência de contornos
+QD_03_vertical_transparente_claro.svg: bbox vetor (247, 304, 1809, 1803), bbox V6 (307, 335, 1740, 1712), escala 0.9174; alinhamento de enquadramento, NÃO equivalência de contornos
+QD_04_vertical_branco_transparente.svg: bbox vetor (247, 304, 1809, 1803), bbox V6 (307, 335, 1740, 1712), escala 0.9174; alinhamento de enquadramento, NÃO equivalência de contornos
+QD_05_vertical_preto_transparente.svg: bbox vetor (247, 304, 1809, 1803), bbox V6 (307, 335, 1740, 1712), escala 0.9174; alinhamento de enquadramento, NÃO equivalência de contornos
+QD_06_horizontal_verde.svg: bbox vetor (106, 106, 2058, 754), bbox V6 (144, 113, 2256, 786), escala 1.0386; alinhamento de enquadramento, NÃO equivalência de contornos
+QD_07_horizontal_claro.svg: bbox vetor (106, 106, 2058, 754), bbox V6 (144, 113, 2256, 786), escala 1.0386; alinhamento de enquadramento, NÃO equivalência de contornos
+QD_08_horizontal_transparente_claro.svg: bbox vetor (106, 106, 2058, 754), bbox V6 (144, 113, 2256, 786), escala 1.0386; alinhamento de enquadramento, NÃO equivalência de contornos
+QD_09_simbolo_verde.svg: bbox vetor (134, 157, 893, 902), bbox V6 (128, 154, 896, 870), escala 0.9611; alinhamento de enquadramento, NÃO equivalência de contornos
+QD_10_simbolo_preto_transparente.svg: bbox vetor (134, 157, 893, 902), bbox V6 (128, 154, 895, 869), escala 0.9597; alinhamento de enquadramento, NÃO equivalência de contornos
+QD_11_vertical_grafite.svg: bbox vetor (247, 304, 1809, 1803), bbox V6 (307, 335, 1740, 1712), escala 0.9174; alinhamento de enquadramento, NÃO equivalência de contornos
+QD_12_horizontal_grafite.svg: bbox vetor (106, 106, 2058, 754), bbox V6 (144, 113, 2256, 786), escala 1.0386; alinhamento de enquadramento, NÃO equivalência de contornos

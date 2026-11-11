@@ -25,7 +25,7 @@ export function CTAFinal() {
           <div className="absolute inset-0 -top-20 flex items-center justify-center pointer-events-none" aria-hidden>
             <div
               className="w-[500px] h-[280px] rounded-full blur-3xl opacity-10"
-              style={{ background: "radial-gradient(ellipse, #7ABF3C 0%, transparent 70%)" }}
+              style={{ background: "radial-gradient(ellipse, #B89B5E 0%, transparent 70%)" }}
             />
           </div>
 
@@ -35,7 +35,7 @@ export function CTAFinal() {
             transition={{ duration: 0.7 }}
             className="relative text-center"
           >
-            <span className="text-xs font-semibold text-[#7ABF3C] tracking-[0.3em] uppercase">
+            <span className="text-xs font-semibold text-[#B89B5E] tracking-[0.3em] uppercase">
               Comece agora
             </span>
 
@@ -59,7 +59,7 @@ export function CTAFinal() {
             >
               {promessas.map((p) => (
                 <div key={p} className="flex items-center gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-[#7ABF3C] shrink-0" strokeWidth={1.5} />
+                  <CheckCircle2 className="w-4 h-4 text-[#B89B5E] shrink-0" strokeWidth={1.5} />
                   <span className="text-sm text-gray-400">{p}</span>
                 </div>
               ))}
@@ -77,7 +77,7 @@ export function CTAFinal() {
                 href="#forcas"
                 className={cn(
                   buttonVariants({ size: "lg" }),
-                  "w-full sm:w-auto gold-gradient-bg text-white font-bold tracking-wide hover:opacity-90 transition-opacity px-10 shadow-[0_0_40px_rgba(122,191,60,0.20)]"
+                  "w-full sm:w-auto gold-gradient-bg text-[#102820] font-bold tracking-wide hover:opacity-90 transition-opacity px-10 shadow-[0_0_40px_rgba(184,155,94,0.20)]"
                 )}
               >
                 Começar minha preparação
@@ -86,7 +86,7 @@ export function CTAFinal() {
                 href="#como-funciona"
                 className={cn(
                   buttonVariants({ variant: "outline", size: "lg" }),
-                  "w-full sm:w-auto border-[#222222] text-gray-300 hover:border-[#7ABF3C]/40 hover:text-[#7ABF3C] bg-transparent px-10"
+                  "w-full sm:w-auto border-[#222222] text-gray-300 hover:border-[#B89B5E]/40 hover:text-[#B89B5E] bg-transparent px-10"
                 )}
               >
                 Ver como funciona

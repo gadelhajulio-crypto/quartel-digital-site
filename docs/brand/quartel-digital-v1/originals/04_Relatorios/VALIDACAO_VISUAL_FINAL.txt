@@ -1,0 +1,6 @@
+QUARTEL DIGITAL — VALIDAÇÃO FINAL
+
+12 SVG e 12 PNG recebidos. Comparação visual com V6: composição e proporções muito próximas; diferenças sutis de cores, antialiasing e contornos persistem. Não é possível certificar identidade geométrica absoluta.
+Favicons: 16 px apresenta suavização/perda de detalhe; 32 px reconhecível; 48 px e maiores legíveis.
+DECISÃO: CANDIDATA FINAL, aguardando aprovação visual do titular da marca. Não rotular como identidade oficial homologada sem essa aprovação.
+Arquivos originais mantidos.

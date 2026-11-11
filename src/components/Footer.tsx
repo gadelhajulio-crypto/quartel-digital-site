@@ -11,23 +11,14 @@ export function Footer() {
           {/* Brand */}
           <div>
             <a href="#" className="flex items-center gap-3 mb-2">
-              <div className="bg-white rounded-md p-1 flex items-center justify-center">
-                <Image
-                  src="/assets/logo/logoqd.png"
-                  alt="Quartel Digital"
-                  width={36}
-                  height={36}
-                  className="object-contain"
-                />
-              </div>
-              <div className="flex flex-col leading-tight">
-                <span className="font-bold text-white tracking-wide text-sm uppercase leading-none">
-                  Quartel Digital
-                </span>
-                <span className="text-[10px] text-[#7ABF3C] tracking-widest leading-none mt-0.5">
-                  Recruta Padrão
-                </span>
-              </div>
+              <Image
+                src="/assets/brand/quartel-digital-v1/QD_12_horizontal_grafite.svg"
+                alt="Quartel Digital"
+                width={2400}
+                height={900}
+                className="h-auto w-40 shrink-0"
+                unoptimized
+              />
             </a>
             <p className="text-xs text-gray-600 mt-4 leading-relaxed max-w-xs">
               O Quartel Digital é o sistema de excelência acadêmica militar da
@@ -55,7 +46,7 @@ export function Footer() {
                 <li key={item.label}>
                   <a
                     href={item.href}
-                    className="text-sm text-gray-500 hover:text-[#7ABF3C] transition-colors"
+                    className="text-sm text-gray-500 hover:text-[#B89B5E] transition-colors"
                   >
                     {item.label}
                   </a>
@@ -75,7 +66,7 @@ export function Footer() {
                   <li key={item}>
                     <a
                       href="#"
-                      className="text-sm text-gray-500 hover:text-[#7ABF3C] transition-colors"
+                      className="text-sm text-gray-500 hover:text-[#B89B5E] transition-colors"
                     >
                       {item}
                     </a>

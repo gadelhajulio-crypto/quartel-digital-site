@@ -51,7 +51,7 @@ export function Resultados() {
           transition={{ duration: 0.6 }}
           className="mb-14"
         >
-          <span className="text-xs font-semibold text-[#7ABF3C] tracking-[0.3em] uppercase">
+          <span className="text-xs font-semibold text-[#B89B5E] tracking-[0.3em] uppercase">
             Impacto Real
           </span>
           <h2 className="mt-4 text-4xl md:text-5xl font-black text-[#111111] leading-tight max-w-2xl">
@@ -75,12 +75,12 @@ export function Resultados() {
               animate={isInView ? { opacity: 1, y: 0 } : {}}
               transition={{ delay: i * 0.09, duration: 0.55 }}
             >
-              <Card className="h-full bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-[#7ABF3C]/30 transition-all duration-300 group rounded-xl">
+              <Card className="h-full bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-[#B89B5E]/30 transition-all duration-300 group rounded-xl">
                 <CardContent className="pt-6 space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="font-bold text-[#111111] text-sm leading-snug">{item.titulo}</h3>
                     <ArrowUpRight
-                      className="w-4 h-4 text-gray-300 group-hover:text-[#7ABF3C] shrink-0 transition-colors mt-0.5"
+                      className="w-4 h-4 text-gray-300 group-hover:text-[#B89B5E] shrink-0 transition-colors mt-0.5"
                       strokeWidth={1.5}
                     />
                   </div>

@@ -12,6 +12,14 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  icons: {
+    icon: [
+      { url: "/assets/brand/quartel-digital-v1/QD_favicon_mira_original.svg", type: "image/svg+xml", sizes: "any" },
+      { url: "/assets/brand/quartel-digital-v1/QD_favicon_mira_16.png", type: "image/png", sizes: "16x16" },
+      { url: "/assets/brand/quartel-digital-v1/QD_favicon_mira_32.png", type: "image/png", sizes: "32x32" },
+    ],
+    apple: [{ url: "/assets/brand/quartel-digital-v1/QD_favicon_mira_180.png", sizes: "180x180", type: "image/png" }],
+  },
   title: "Quartel Digital — Sistema de desempenho para recrutas",
   description:
     "Sistema de excelência acadêmica militar da plataforma Recruta Padrão, com trilhas, revisão, prática, instrutor virtual e progressão para recrutas.",
